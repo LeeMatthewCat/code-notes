@@ -1,0 +1,26 @@
+# 作業系統產生的檔案
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Obsidian 本地暫存與工作區設定（若誤放）
+.obsidian/workspace*
+.obsidian/cache/
+
+# Python 快取與虛擬環境
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# 環境變數與秘密金鑰
+.env
+.env.local
+*.pem
+*.key
