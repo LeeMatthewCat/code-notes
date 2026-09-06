@@ -482,25 +482,61 @@ console.print(syntax)
 
 ##### Markdown() 渲染 Markdown
 
-- **使用時機**：想要在純文字的終端機內，直接把 Markdown 語法（標題、清單、粗體）解析並渲染出層次感時。
-- **語法**：`Markdown(markup: str, ...)`
+- **使用時機**：想要在純文字的終端機內，直接把 Markdown 語法（標題、清單、粗體、程式碼區塊）解析並渲染出層次感時。
+- **語法**：`Markdown(markup: str, code_theme: str = "monokai", justify: str = None, ...)`
 - **參數說明**：
-  - `markup`：Markdown 格式的原始字串。
+  - `markup`：Markdown 格式的原始文字字串。
+  - `code_theme`：內部程式碼區塊的高亮主題（預設為 `"monokai"`）。
+  - `justify`：文字對齊方式（`"left"`, `"center"`, `"right"`, `"full"`）。
 - **回傳值**：
-  - `Markdown`：渲染物件。
+  - `Markdown`：可渲染之 Markdown 佈局物件。
 
 ```python
-...
 from rich.console import Console
 from rich.markdown import Markdown
 
 console = Console()
 
-# 專注展示渲染 MD 文件
-md_text = "# 標題\\n這是 **粗體** 文字。"
+md_text = """
+# 專案概觀
+這是一段使用 **Rich** 解析的 Markdown 說明文件：
+- 支援清單項目
+- 支援 `行內代碼` 與語法高亮
+"""
 console.print(Markdown(md_text))
-...
 ```
+
+> **重要避坑：CommonMark 前導換行被自動 Strip 機制**  
+> 
+> **現象與痛點**：  
+> 若試圖在 Markdown 字串開頭加上 `\n`（例如 `f"\n{text}"`），期望與上方終端文字拉出一個空行距離，丟進 `Markdown()` 渲染後會發現**該換行直接消失，文字依然緊緊貼在一起**！  
+> 
+> **底層原因**：  
+> Rich 的 Markdown 解析器嚴格遵循 **CommonMark 規範**。在解析 AST 語法樹時，所有區塊開頭與結尾的**前導空白與換行（Leading/Trailing Newlines）會在第一時間被解析器自動 strip（消除）**，且中間多個連續的 `\n\n\n` 也只會被折疊為標準單一段落間距。  
+> 
+> **三大解決方案**：  
+> 
+> 1. **方案一（最佳實踐）：由 Console 控制終端空行**  
+>    不要將版面空行混入 Markdown 文本中，改由終端機印出空行：
+>    ```python
+>    console.line()  # 印出一個空行
+>    console.print(Markdown(md_text))
+>    ```
+> 
+> 2. **方案二：使用 Padding 組件包裝 Markdown**  
+>    使用 Rich 內建的 `Padding` 為整個 Markdown 區塊設定上下外距（Margin）：
+>    ```python
+>    from rich.padding import Padding
+>    # (上, 右, 下, 左) 或 (上下, 左右)
+>    console.print(Padding(Markdown(md_text), (1, 0, 0, 0))) # 上方留 1 行空隙
+>    ```
+> 
+> 3. **方案三：插入零寬字元或 HTML 標籤阻斷 Strip**  
+>    若只能傳遞單一字串，可在換行前加入零寬空格（Zero-width space `\u200b`）或 HTML 空標籤，使解析器判定開頭並非純粹的空行：
+>    ```python
+>    md_with_gap = "\u200b\n\n# 標題 (成功保留上方空行)"
+>    console.print(Markdown(md_with_gap))
+>    ```
 
 ---
 
