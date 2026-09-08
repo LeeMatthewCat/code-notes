@@ -37,8 +37,11 @@
 
 | 參數名稱 | 資料型別 | 說明 |
 | :--- | :--- | :--- |
-| `args` | `list[str]` | 要執行的命令與引數。強烈建議傳入串列以防止 Shell 注入。 |
-| `capture_output` | `bool` | `True` 時會抓取終端機的 stdout 與 stderr 輸出內容，不在畫面上印出。 |
+| `args` | `list[str]` / `str` | 要執行的命令與引數。強烈建議搭配 `shell=False` 傳入串列以防止 Shell 注入。 |
+| `shell` | `bool` | 是否透過系統 Shell（如 `/bin/sh` 或 `cmd.exe`）來解析並執行命令。預設為 `False`。 |
+| `stdin` / `stdout` / `stderr` | 串流設定 | 資料流向設定（如 `PIPE`, `DEVNULL`, 實體檔案）。詳見 [[#標準 I/O 導向設定 (stdin/stdout/stderr)\|標準 I/O 導向設定]]。 |
+| `capture_output` | `bool` | `True` 時自動捕獲 stdout 與 stderr（等同於 `stdout=PIPE, stderr=PIPE`）。詳見 [[#標準 I/O 導向設定 (stdin/stdout/stderr)\|標準 I/O 導向設定]]。 |
+| `input` | `str` / `bytes` | 直接傳送文字或二進位資料給子行程的 stdin。詳見 [[#標準 I/O 導向設定 (stdin/stdout/stderr)\|標準 I/O 導向設定]]。 |
 | `text` | `bool` | `True` 時將輸出二進位資料解碼為字串。通常搭配 `capture_output` 使用。 |
 | `encoding` | `str` | 明確指定解碼的文字編碼格式（如 `"utf-8"` 或 Windows 的 `"cp950"`）。 |
 | `errors` | `str` | 文字解碼失敗時的容錯策略（如 `"replace"` 替換為未知字元、`"ignore"` 忽略跳過），**防止因特殊字元拋出 `UnicodeDecodeError` 導致程式崩潰**。 |
@@ -78,6 +81,74 @@ print(result.stdout)
 
 ---
 
+##### shell 參數深度解密 (shell=False vs shell=True)
+
+`shell` 參數決定了：**Python 是「直接呼叫目標二進位程式」，還是「先召喚一個系統 Shell 終端機，再由 Shell 去解讀命令」**。
+
+```python
+import subprocess
+
+# 1. shell=False (預設，最佳實踐)：直接執行程式，傳入參數串列
+subprocess.run(["ls", "-l", "my folder"])
+
+# 2. shell=True：透過系統 Shell 解析整行字串 (支援管道與萬用字元)
+subprocess.run("ls -l | grep txt", shell=True)
+```
+
+###### 1. 底層運作機制差異
+
+- **`shell=False`（預設，推薦）**：
+  
+  Python 會透過作業系統底層的 `execve()` 系統呼叫，**直接定位二進位執行檔**（如 `/bin/ls`），並把後續的串列項目原封不動地傳給該程式的 `argv`。
+  
+  **不經過任何 Shell 解釋器**，因此輸入內容中的空白字元、分號、引號都不會被視為 Shell 特殊語法，徹底防範命令注入！
+
+- **`shell=True`**：
+  
+  Python 會先啟動一個中介的 Shell 子行程：
+  - **Linux / macOS**：等同於執行 `["/bin/sh", "-c", "你的命令字串"]`
+  - **Windows**：等同於執行 `["cmd.exe", "/c", "你的命令字串"]`
+  
+  再由該 Shell 去進行命令分詞、解析環境變數、展開萬用字元與處理管道。
+
+###### 2. shell=False 與 shell=True 全方位對照表
+
+| 比較維度 | `shell=False` (預設，標準) | `shell=True` (特殊用途) |
+| :--- | :--- | :--- |
+| **參數推薦格式** | **串列 `list[str]`** (如 `["ls", "-la"]`) | **單一字串 `str`** (如 `"ls -la"`) |
+| **底層執行方式** | 作業系統直接載入執行目標程式 | 先啟動 `/bin/sh` 或 `cmd.exe` 再轉發命令 |
+| **管道 `\|` 與重定向 `>`** | 不支援（會被當作普通檔名字串） | **支援**（可使用 `\|`, `>`, `>>`, `&&`） |
+| **萬用字元擴展 `*`** | 不支援（傳入 `*.txt` 不會展開） | **支援**（Shell 會自動展開所有符合的檔案） |
+| **環境變數展開 `$VAR`** | 不支援（需手動用 `os.environ` 讀取） | **支援**（Shell 會自動替換 `$HOME` 或 `%USER%`） |
+| **執行效能** | **極高**（少啟動一層 Shell 行程） | 略低（每次皆需額外開闢 Shell 子行程） |
+| **安全性等級** | **極高**（免疫 Shell 注入攻擊） | **極低**（若拼接外部字串易遭 RCE 漏洞） |
+
+###### 3. 什麼時候「非得使用」shell=True？與安全替代方案
+
+1. **情境一：執行作業系統內建 Shell 指令**  
+   在 Windows 下，諸如 `dir`, `echo`, `type`, `copy`, `cls` 並不是獨立的 `.exe` 執行檔，而是內建在 `cmd.exe` 中的內部命令。  
+   - *解法*：在 Windows 執行此類指令時需設定 `shell=True`，或明確呼叫 `["cmd", "/c", "dir"]`。
+
+2. **情境二：需要多個指令的管道 `|` 串接**  
+   - *一般寫法*：`subprocess.run("cat access.log | grep 404", shell=True)`
+   - *更安全且高效的純 Python 替代方案（使用 Popen 串接）*：
+     ```python
+     p1 = subprocess.Popen(["cat", "access.log"], stdout=subprocess.PIPE)
+     p2 = subprocess.Popen(["grep", "404"], stdin=p1.stdout, stdout=subprocess.PIPE, text=True)
+     p1.stdout.close() # 允許 p1 在 p2 結束時收到 SIGPIPE
+     output, _ = p2.communicate()
+     ```
+
+3. **情境三：需要展開萬用字元（例如 `*.py`）**  
+   - *更推薦的替代方案*：使用 Python 標準庫 `pathlib.Path().glob("*.py")` 取得檔案清單後，以 `shell=False` 傳入：
+     ```python
+     from pathlib import Path
+     py_files = [str(f) for f in Path(".").glob("*.py")]
+     subprocess.run(["black"] + py_files) # 安全且精準
+     ```
+
+---
+
 ## 進階非同步控制 (Popen)
 
 當你需要建立非同步執行的背景進程，或是需要即時進行輸入/輸出串流互動時使用。
@@ -86,13 +157,13 @@ print(result.stdout)
 > Process open
 
 - **使用時機**：想要執行一個需要長時間運行的背景程式，並希望 Python 主程式能「繼續往下跑」不被卡住時；或是需要即時串流讀取日誌輸出時。
-- **語法**：`subprocess.Popen(args, stdin=None, stdout=None, stderr=None, ...)`
+- **語法**：`subprocess.Popen(args, stdin=None, stdout=None, stderr=None, bufsize=-1, close_fds=True, ...)`
 - **參數說明**：
   - `args`：要執行的命令與引數。
     > **💡 小提醒：什麼是「引數」？為什麼要用「串列」？**
     > **引數 (Arguments)** 就是接在指令後面的附加條件，像是飲料的「半糖、少冰」。例如在指令 `ls -l -a` 中，`-l` 與 `-a` 就是引數。
     > 傳入 `args` 時，強烈建議將命令與引數拆解成**字串串列 (List)**（例如：`["ls", "-l", "-a"]`）。這能讓作業系統精準區分「指令本體」與「參數」，100% 防止駭客利用惡意空白字元或特殊符號發動 **Shell Injection (指令注入)** 攻擊！
-  - `stdout`/`stdin`/`stderr`：用來決定背景程式資料流的去向（詳見下方的「標準 I/O 導向設定」章節）。
+  - `stdin` / `stdout` / `stderr`：用來決定背景程式資料流的去向。詳見 [[#標準 I/O 導向設定 (stdin/stdout/stderr)\|標準 I/O 導向設定]] 專章。
 - **回傳值**：
   - 回傳一個 `subprocess.Popen` 實例物件，這就像是你拿到這個背景程式的「**遙控器**」。透過這個遙控器，你可以隨時對它進行操作或監控，最常用的按鈕與屬性包含：
     - `.poll()`：檢查程式是不是已經跑完了。回傳 `None` 代表還在背景跑，回傳數字（通常是 `0`）代表已經順利結束。
@@ -102,7 +173,6 @@ print(result.stdout)
     - `.communicate()`：與這個進程對話（送出 stdin 或讀取它的 stdout/stderr 最後輸出），呼叫此方法會等待程式結束。
 
 ```python
-...
 import subprocess
 
 # 專注展示建立非同步背景進程
@@ -110,25 +180,9 @@ proc = subprocess.Popen(["ping", "8.8.8.8"], stdout=subprocess.PIPE)
 
 # 程式不會卡在這裡，可以繼續往下執行其他邏輯
 print("Ping 已經在背景開始執行了...")
-...
 ```
 
-
-
 ---
-
-##### 標準 I/O 導向設定 (stdin/stdout/stderr)
-> Input/Output
-
-在建立 `Popen` 或 `run` 時，你可以透過這三個參數來決定程式資料的流向。最常見的設定有以下幾種：
-
-1. **`None` (預設值)**：不做任何事。程式的輸出會直接印在終端機螢幕上。
-2. **`subprocess.PIPE`**：建立專屬通訊水管，攔截輸入與輸出，允許事後用 `.communicate()` 讀寫互動。
-   > pipe -> 管道
-3. **`subprocess.DEVNULL`**：無盡的黑洞。所有丟進去的輸出都會人間蒸發，適合用來隱藏不必要的報錯或日誌。
-   > Device None
-4. **`subprocess.STDOUT`**：(通常只用在 `stderr`) 把錯誤訊息合併接到標準輸出 (`stdout`) 管線上，統一處理。
-5. **`實體檔案物件`**：直接傳入一個用 `open()` 打開的檔案，讓程式直接把日誌寫進實體檔案裡。
 
 ###### proc.communicate() 建立 PIPE 管道並讀寫
 
@@ -254,6 +308,98 @@ proc.kill()
 # 即使是被抹殺，依然要留在現場收屍！
 proc.wait()
 ...
+```
+
+---
+
+## 標準 I/O 導向設定 (stdin/stdout/stderr)
+
+在呼叫 `subprocess.Popen()`、`subprocess.run()` 或 `check_output()` 時，可以透過這組參數精準控制子行程的資料流向。
+
+### 1. 三大標準串流的核心定義
+- **`stdin` (Standard Input，檔案描述符 0)**：程式的「**嘴巴**」，負責接收外部輸入的資料或文字。
+- **`stdout` (Standard Output，檔案描述符 1)**：程式的「**正常喇叭**」，輸出正常的執行結果與文字日誌。
+- **`stderr` (Standard Error，檔案描述符 2)**：程式的「**警報喇叭**」，專門輸出錯誤訊息、例外追蹤或除錯日誌。
+
+---
+
+### 2. stdin / stdout / stderr 可接受的 6 大合法值全景矩陣
+
+| 設定值 | 意義與行為 | 適用串流 | 典型應用情境 |
+| :--- | :--- | :--- | :--- |
+| **`None` (預設值)** | **繼承父進程終端**，不攔截任何資料，輸出直接印在螢幕上。 | `stdin`, `stdout`, `stderr` | 一般指令執行，希望使用者直接在終端機看到畫面。 |
+| **`subprocess.PIPE`** | **建立記憶體緩衝管道水管**，攔截資料並允許 Python 進行讀寫。 | `stdin`, `stdout`, `stderr` | 需要在 Python 變數中取得輸出內容，或跨進程串接水管。 |
+| **`subprocess.DEVNULL`** | **丟入系統無底黑洞**（Linux `/dev/null`，Windows `NUL`），瞬間丟棄。 | `stdin`, `stdout`, `stderr` | **靜音執行**，隱藏不必要的背景提示或煩人的警告報錯。 |
+| **`subprocess.STDOUT`** | **將 `stderr` 合併接到 `stdout` 管道**，按時間順序混合輸出。 | **僅限 `stderr`** | 統一抓取所有輸出日誌，避免錯誤訊息與正常訊息分離。 |
+| **實體檔案物件** | 傳入以 `open()` 開啟的檔案（`'w'`, `'a'`, `'r'`），直接讀寫硬碟。 | `stdin`, `stdout`, `stderr` | 將輸出直接寫入 log 檔案，或從 txt 檔案餵入輸入。 |
+| **整數檔案描述符 (int)** | 傳入作業系統底層的 File Descriptor（如 `0`, `1`, `2` 或 `os.open`）。 | `stdin`, `stdout`, `stderr` | 極底層的系統開發與通訊端點重新導向。 |
+
+---
+
+### 3. 與 I/O 相關的其他關鍵參數
+
+- **`capture_output: bool`**（`subprocess.run()` 專屬）：
+  - 設為 `True` 時，等同於自動宣告 `stdout=subprocess.PIPE, stderr=subprocess.PIPE`。
+  - **注意**：設定 `capture_output=True` 時，不可同時再顯式指定 `stdout` 或 `stderr`，否則會拋出 `ValueError`。
+- **`input: str | bytes`**（`subprocess.run()`, `check_output()`）：
+  - 直接將字串或位元組資料送入子行程的 `stdin`（內部自動建立 PIPE 並透過 `.communicate()` 送出）。
+  - **注意**：若傳入 `str`，必須搭配 `text=True` 或 `encoding="utf-8"`。
+- **`bufsize: int`**（`Popen`, `run`）：
+  - 設定 I/O 緩衝區模式：`0`（無緩衝）、`1`（行緩衝）、`>1`（指定緩衝區大小 Bytes）、`-1`（系統預設緩衝）。
+- **`pipesize: int`**（Python 3.10+，`Popen`）：
+  - 在 Linux 系統上調整底層作業系統管道的緩衝區大小（例如 `pipesize=1024*1024` 為 1MB，防範巨量資料造成管線堵塞死鎖）。
+- **`close_fds: bool`**（`Popen`, `run`）：
+  - 在子行程啟動前是否關閉除 0, 1, 2 以外繼承自父行程的檔案描述符（POSIX 預設為 `True`，Windows 預設在未重定向時為 `False`）。
+
+---
+
+### 4. 常用 subprocess 函數對 I/O 參數支援度速查表
+
+| 函數名稱 | `stdin` | `stdout` | `stderr` | `input` 參數 | `capture_output` | 最佳使用情境 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`subprocess.run()`** | 支援 | 支援 | 支援 | 支援 | 支援 | **日常 95% 同步任務首選** |
+| **`subprocess.Popen()`** | 支援 | 支援 | 支援 | 需用 `communicate()` | 不支援 (需顯式指定 PIPE) | **長時間背景任務、即時串流** |
+| **`subprocess.check_output()`** | 支援 | **強制設為 PIPE** | 支援 | 支援 | 不支援 (內建自動抓 stdout) | 只在乎 stdout，失敗拋異常 |
+| **`subprocess.check_call()`** | 支援 | 支援 | 支援 | 不支援 | 不支援 | 只在乎 Exit Code 是否為 0 |
+
+---
+
+### 5. 五大高頻 I/O 導向實戰程式碼範例
+
+```python
+import subprocess
+
+# 範例 1：使用 DEVNULL 完全靜音執行 (丟棄所有輸出與錯誤)
+subprocess.run(["ping", "-c", "1", "8.8.8.8"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# 範例 2：使用 subprocess.STDOUT 將錯誤訊息合併到標準輸出中
+res = subprocess.run(
+    ["python3", "-c", "import sys; print('正常訊息'); sys.stderr.write('報錯訊息\\n')"],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT, # 關鍵：把 stderr 接到 stdout 管道上
+    text=True
+)
+print("合併後的輸出:\n", res.stdout)
+
+# 範例 3：直接導向寫入實體檔案 (不佔用記憶體)
+with open("task_output.log", "w", encoding="utf-8") as f:
+    subprocess.run(["ls", "-la"], stdout=f, stderr=subprocess.STDOUT)
+
+# 範例 4：使用 input 參數直接灌入文字給 stdin
+res = subprocess.run(
+    ["grep", "apple"],
+    input="banana\napple\norange\npineapple\n", # 直接餵入字串
+    capture_output=True,
+    text=True
+)
+print("過濾結果:\n", res.stdout) # 輸出: apple, pineapple
+
+# 範例 5：跨 Popen 進程接水管 (p1.stdout -> p2.stdin)
+p1 = subprocess.Popen(["cat", "task_output.log"], stdout=subprocess.PIPE)
+p2 = subprocess.Popen(["grep", "main"], stdin=p1.stdout, stdout=subprocess.PIPE, text=True)
+p1.stdout.close() # 允許 p1 正常接收 SIGPIPE
+out, _ = p2.communicate()
+print("管道串接結果:", out)
 ```
 
 ---
