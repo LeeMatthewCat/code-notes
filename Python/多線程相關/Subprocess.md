@@ -32,7 +32,7 @@
 ##### subprocess.run() 同步執行指令
 
 - **使用時機**：當你需要執行一條終端機命令，並希望 Python 主程式**阻塞等待**直到命令執行完畢，然後獲取其輸出結果或結束狀態碼時。適合 95% 以上的一般需求。
-- **語法**：`subprocess.run(args, capture_output=False, text=False, encoding=None, errors=None, check=False, timeout=None, ...)`
+- **語法**：`subprocess.run(args, capture_output=False, text=False, encoding=None, errors=None, check=False, timeout=None, env=None, ...)`
 - **參數說明**：
 
 | 參數名稱 | 資料型別 | 說明 |
@@ -47,6 +47,7 @@
 | `errors` | `str` | 文字解碼失敗時的容錯策略（如 `"replace"` 替換為未知字元、`"ignore"` 忽略跳過），**防止因特殊字元拋出 `UnicodeDecodeError` 導致程式崩潰**。 |
 | `check` | `bool` | `True` 時，若命令執行失敗 (Exit Code != 0) 會自動拋出 `CalledProcessError`。 |
 | `timeout` | `float` | 設定最大執行秒數，超時拋出 `TimeoutExpired` 異常。 |
+| `env` | `dict[str, str]` | 子行程的環境變數字典。預設 `None`（繼承父行程）。詳見 [[#環境變數控制 (env) 與 TERM / PAGER 天條\|環境變數控制 (env)]]。 |
 
 - **回傳值**：
   - `CompletedProcess`：包含執行結果（如 `.returncode`, `.stdout`, `.stderr`）的物件。
@@ -157,13 +158,14 @@ subprocess.run("ls -l | grep txt", shell=True)
 > Process open
 
 - **使用時機**：想要執行一個需要長時間運行的背景程式，並希望 Python 主程式能「繼續往下跑」不被卡住時；或是需要即時串流讀取日誌輸出時。
-- **語法**：`subprocess.Popen(args, stdin=None, stdout=None, stderr=None, bufsize=-1, close_fds=True, ...)`
+- **語法**：`subprocess.Popen(args, stdin=None, stdout=None, stderr=None, bufsize=-1, close_fds=True, env=None, ...)`
 - **參數說明**：
   - `args`：要執行的命令與引數。
     > **💡 小提醒：什麼是「引數」？為什麼要用「串列」？**
     > **引數 (Arguments)** 就是接在指令後面的附加條件，像是飲料的「半糖、少冰」。例如在指令 `ls -l -a` 中，`-l` 與 `-a` 就是引數。
     > 傳入 `args` 時，強烈建議將命令與引數拆解成**字串串列 (List)**（例如：`["ls", "-l", "-a"]`）。這能讓作業系統精準區分「指令本體」與「參數」，100% 防止駭客利用惡意空白字元或特殊符號發動 **Shell Injection (指令注入)** 攻擊！
   - `stdin` / `stdout` / `stderr`：用來決定背景程式資料流的去向。詳見 [[#標準 I/O 導向設定 (stdin/stdout/stderr)\|標準 I/O 導向設定]] 專章。
+  - `env`：子行程的環境變數字典。預設 `None`（繼承父行程）。詳見 [[#環境變數控制 (env) 與 TERM / PAGER 天條\|環境變數控制 (env)]]。
 - **回傳值**：
   - 回傳一個 `subprocess.Popen` 實例物件，這就像是你拿到這個背景程式的「**遙控器**」。透過這個遙控器，你可以隨時對它進行操作或監控，最常用的按鈕與屬性包含：
     - `.poll()`：檢查程式是不是已經跑完了。回傳 `None` 代表還在背景跑，回傳數字（通常是 `0`）代表已經順利結束。
@@ -455,8 +457,126 @@ try:
     # 專注展示設定超時防護
     result = subprocess.run(["sleep", "10"], timeout=3)
 except subprocess.TimeoutExpired as e:
-    print("⚠️ 命令執行超時，已強制中斷防卡死！")
+    print("命令執行超時，已強制中斷防卡死！")
 ...
 ```
 
 ---
+
+## 環境變數控制 (env) 與 TERM / PAGER 天條
+
+在呼叫 `subprocess.run()` 或 `subprocess.Popen()` 時，子行程的執行行為深受作業系統**環境變數 (Environment Variables)** 的影響。
+
+### 1. 環境變數傳遞機制與覆蓋陷阱
+
+- **預設行為 (`env=None`)**：
+  子行程會自動完整繼承父行程（當前 Python 直譯器）的所有環境變數。
+- **自訂環境變數 (`env=dict`)**：
+  傳入一個 `dict[str, str]` 字典，作為子行程專屬的環境變數空間。
+
+> **核心天條：嚴禁直接傳入全新字典覆蓋 `env`**  
+> 如果直接傳入 `env={"PAGER": "cat"}`，子行程將**只擁有這個鍵值**，徹底遺失 `PATH`、`HOME`、`USER` 等所有系統環境變數！  
+> 這會直接導致 `FileNotFoundError: [Errno 2] No such file or directory` 或各種系統功能癱瘓。  
+> **正確做法**：一律先透過 `os.environ.copy()` 複製父行程環境，再針對特定鍵值進行覆蓋或追加！
+
+```python
+import os
+import subprocess
+
+# 1. 完整複製當前 Python 行程的環境變數
+custom_env = os.environ.copy()
+
+# 2. 安全覆蓋或追加特定變數
+custom_env["PAGER"] = "cat"
+custom_env["TERM"] = "dumb"
+
+# 3. 傳入 env 參數執行
+result = subprocess.run(["git", "log", "-n", "3"], env=custom_env, capture_output=True, text=True)
+```
+
+---
+
+### 2. PAGER 環境變數：防範自動分頁卡死
+
+##### 為什麼子行程會莫名永久卡死 (Hang)？
+
+許多命令列工具（如 `git log`、`git diff`、`man`、`psql`、`systemctl`、`journalctl` 等）在輸出超過一頁的文字時，預設會調用系統的**分頁器 (Pager)**（通常是 `less` 或 `more`）。
+
+分頁器會暫停程式執行，等待使用者在鍵盤上按 `q` 退出或按空白鍵翻頁。
+
+在 Python `subprocess` 非互動環境中（尤其是開啟 `capture_output=True` 或 `stdout=subprocess.PIPE` 時），沒有人會去按 `q`，導致子行程**永久阻塞卡死**！
+
+##### PAGER 的三大解決方案
+
+1. **方案一（全域標準解法，推薦）**：
+   在 `env` 中設定 `PAGER="cat"`。`cat` 是一次性輸出所有文字的指令，完全不進行分頁互動，輸出完畢立刻結束。
+2. **方案二（工具專屬環境變數）**：
+   例如針對 Git 設定 `GIT_PAGER="cat"`。
+3. **方案三（指令原生旗標）**：
+   在命令串列中直接加上 `--no-pager` 參數（例如 `["git", "--no-pager", "log"]`）。
+
+---
+
+### 3. TERM 環境變數：終端型別與 ANSI 色碼控制
+
+`TERM` 環境變數用來告知子行程「當前終端機螢幕的型別與控制能力」（如 `xterm-256color`、`vt100`、`dumb`）。
+
+##### 情境 A：去除 ANSI 彩色與動畫控制碼（取得乾淨純文字）
+
+- **問題現象**：
+  許多 CLI 工具（如 `pytest`、`npm`、`rich`、`ls`、`curl`）檢測到彩色終端時，會自動在輸出字串中插入 ANSI 轉義字元（如 `\x1b[32mPASS\x1b[0m`）。
+  當 Python 後續需要用正規表達式 (Regex) 或字串比對解析輸出時，這些色碼會造成嚴重干擾。
+- **解法**：
+  在 `env` 中設定 `TERM="dumb"`（宣告為無能力的啞巴終端）或設定 `NO_COLOR="1"`，強制目標程式關閉色彩與進度條動畫，輸出乾淨純文字。
+
+##### 情境 B：修復「TERM environment variable not set」報錯
+
+- **問題現象**：
+  某些底層工具（如 `tput`、`clear`、`nano` 或依賴 `curses` 的二進位程式）在檢測不到 `TERM` 時會直接拋錯並非正常終止 (Exit Code != 0)。
+- **解法**：
+  在 `env` 中顯式補上 `TERM="xterm-256color"` 或 `TERM="vt100"`。
+
+---
+
+### 4. TERM 與 PAGER 常用設定值全景矩陣
+
+| 環境變數 | 設定值 | 目的與效果 | 適用情境 |
+| :--- | :--- | :--- | :--- |
+| **`PAGER`** | `"cat"` | **強制停用互動分頁**，一次性噴出所有文字輸出。 | 呼叫 `git log`, `git diff`, `man`, `psql` 時防卡死。 |
+| **`PAGER`** | `""` (空字串) | 停用預設分頁器。 | 某些支援空值停用分頁的 CLI 工具。 |
+| **`GIT_PAGER`** | `"cat"` | 專門針對 Git 指令停用分頁器。 | 僅想針對 Git 停用分頁，不影響其他子工具。 |
+| **`TERM`** | `"dumb"` | **宣告為啞巴終端**，停用所有 ANSI 顏色代碼與終端動畫。 | 需要在 Python 中精準正則解析純文字輸出時。 |
+| **`TERM`** | `"xterm-256color"` | 宣告為標準 256 色終端。 | 執行 `tput`、`curses` 或需要完整保留彩色輸出的工具。 |
+| **`NO_COLOR`** | `"1"` | 遵守通用開源規範，通知所有支援該標準的 CLI 停用色彩。 | 現代開源工具（如 Rust / Go / Node.js CLI）純文字輸出。 |
+
+---
+
+### 5. 實戰程式碼範例
+
+```python
+import os
+import subprocess
+
+# 1. 準備安全環境變數字典
+env = os.environ.copy()
+
+# 2. 注入防卡死與純文字參數
+env["PAGER"] = "cat"        # 防止 git log 進入 less 互動模式卡死
+env["TERM"] = "dumb"        # 移除 ANSI 顏色控制碼，獲取純文字
+env["NO_COLOR"] = "1"       # 現代 CLI 通用去色彩標準
+
+# 3. 執行指令並捕獲純文字
+result = subprocess.run(
+    ["git", "log", "-n", "5"],
+    env=env,
+    capture_output=True,
+    text=True,
+    check=True
+)
+
+# 4. 此時輸出的 stdout 為 100% 乾淨純文字，無色碼且絕不卡死
+print("Git 歷史紀錄:\n", result.stdout)
+```
+
+---
+
