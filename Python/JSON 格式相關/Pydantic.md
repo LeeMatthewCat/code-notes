@@ -243,16 +243,84 @@ print(clean_numbers)  # 輸出: [10, 20, 30] (全部轉成 int！)
 - **語法**：`欄位名稱: 型別 = Field(default=..., gt=..., lt=..., ...)`
 - **核心參數字典對照表**：
 
-| 參數名稱 | 適用型別 | 說明與範例 |
-| :--- | :--- | :--- |
-| **`default`** | 任意 | 欄位的預設值（第一個位置參數）。若無預設值使用 `...` (Ellipsis)。 |
-| **`default_factory`** | 任意 | 動態預設值產生函式（例如：`default_factory=datetime.now`、`default_factory=list`）。 |
-| **`gt` / `ge`** | 數值型別 | 大於 (`>`) / 大於等於 (`>=`)。範例：`gt=0`、`ge=18`。 |
-| **`lt` / `le`** | 數值型別 | 小於 (`<`) / 小於等於 (`<=`)。範例：`lt=100`、`le=120`。 |
-| **`min_length` / `max_length`** | 字串 / 容器 | 限制字串或清單的最短 / 最長長度。範例：`min_length=6`。 |
-| **`pattern`** | 字串 | 正則表達式匹配字串。範例：`pattern=r"^09\d{8}$"` (台灣手機門號)。 |
-| **`alias`** | 字串 | 外部傳入與輸出時使用的欄位別名（如對接前端駝峰命名 `userId`）。 |
-| **`description`** | 字串 | 欄位說明文件（會被寫入 `model_json_schema()` 供 AI 或 Swagger 閱讀）。 |
+| 參數名稱                            | 適用型別    | 說明與範例                                                                                                            |
+| :------------------------------ | :------ | :--------------------------------------------------------------------------------------------------------------- |
+| **`default`**                   | 任意      | 欄位的**靜態預設值**。適合不可變的常數（如 `default=0`、`default="user"`）。若無預設值使用 `...` (Ellipsis)。                     |
+| **`default_factory`**           | 可呼叫函式  | 欄位的**動態工廠函式**。傳入函式名稱（如 `list`、`datetime.now`、`uuid4`），每次建立新實例時獨立呼叫生成，杜絕記憶體共享污染與時間鎖死。 |
+| **`gt` / `ge`**                 | 數值型別    | 大於 (`>`) / 大於等於 (`>=`)。範例：`gt=0`、`ge=18`。（greater than / greater equal）                                          |
+| **`lt` / `le`**                 | 數值型別    | 小於 (`<`) / 小於等於 (`<=`)。範例：`lt=100`、`le=120`。（less than / less equal）                                             |
+| **`min_length` / `max_length`** | 字串 / 容器 | 限制字串或清單的最短 / 最長長度。範例：`min_length=6`。                                                                             |
+| **`pattern`**                   | 字串      | 正則表達式匹配字串。範例：`pattern=r"^09\d{8}$"` (台灣手機門號)。                                                                    |
+| **`alias`**                     | 字串      | 外部傳入與輸出時使用的欄位別名（如對接前端駝峰命名 `userId`）。（alias，別名）                                                                   |
+| **`description`**               | 字串      | 欄位說明文件（會被寫入 `model_json_schema()` 供 AI 或 Swagger 閱讀）。                                                            |
+
+###### default vs default_factory 核心差異 (靜態死值 vs 動態工廠)
+
+在 Python 與 Pydantic 中，欄位預設值分為「靜態固定值」與「動態工廠產出」兩種機制：
+
+1. **`default` (靜態死值)**：
+   - 在程式啟動、Python 載入類別的瞬間**只計算一次**，並將結果固定在記憶體中。
+   - 適用於**不可變的基礎型別常數**（如整數 `0`、字串 `"active"`、布林值 `False`）。
+
+2. **`default_factory` (動態工廠製造機)**：
+   - 傳入一個**函式本體（可呼叫物件 Callable，絕不能帶小括號 `()`）**。
+   - **每當建立一個全新的模型物件時，Pydantic 就會現場重新呼叫該函式一次**，產出全新且獨立的物件。
+
+> **生動比喻單元**：  
+> - **`default`**：像餐廳一早煮好一整鍋湯（同一個記憶體位址）。後續來的每位客人都不拿新碗，直接把湯匙伸進同一鍋湯裡喝；只要一位客人在鍋裡撒胡椒粉，所有客人的湯全部被污染！  
+> - **`default_factory`**：像廚房的點餐機（工廠函式）。每來一位新客人，點餐機就現場現煮一碗獨立的新湯端給該客人，彼此完全隔離、互不影響。
+
+###### 兩大經典致命陷阱與程式碼證明
+
+1. **陷阱一：可變容器 (List / Dict) 記憶體共享污染**
+   - **錯誤寫法**：`tags: list[str] = Field(default=[])`  
+     所有未傳入 `tags` 的物件實例，內部皆指向同一個全域空串列。A 物件修改了清單，B 物件的清單會跟著被竄改！
+   - **正確寫法**：`tags: list[str] = Field(default_factory=list)`  
+     每次建立新實例時自動執行 `list()`，分配完全獨立的記憶體空間。
+
+2. **陷阱二：動態時間 (datetime) 與唯一識別碼 (UUID) 靜態鎖死**
+   - **錯誤寫法**：`created_at: datetime = Field(default=datetime.now())`  
+     `datetime.now()` 帶了括號，會在 Python 載入模組的當下一口氣算完並固定。三天後建立的新訂單，時間依然是三天前的伺服器啟動時間！
+   - **正確寫法**：`created_at: datetime = Field(default_factory=datetime.now)`  
+     傳入 `datetime.now` 函式名稱本身。每次建立新訂單時，現場看錶產出當下時間。
+
+> **語法天條：`default_factory` 傳入值嚴禁帶有小括號**  
+> - 錯誤：`default_factory=list()` 或 `default_factory=datetime.now()`（帶括號會立馬執行，退化為靜態死值）  
+> - 正確：`default_factory=list` 或 `default_factory=datetime.now`（傳入函式本體）
+
+```python
+from datetime import datetime
+import uuid
+from pydantic import BaseModel, Field
+
+class OrderItem(BaseModel):
+    # 1. 靜態預設值：直接給固定常數
+    status: str = Field(default="pending")
+    
+    # 2. 動態工廠預設值：每次建立新訂單，自動生成全新的獨立 UUID 與當下時間
+    order_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    # 3. 容器型別動態工廠：每個實例各自擁有獨立的空串列，互不干擾
+    tags: list[str] = Field(default_factory=list)
+
+# 測試實例 1
+order1 = OrderItem()
+order1.tags.append("特急件")
+
+# 測試實例 2
+order2 = OrderItem()
+
+print("訂單 1 ID:", order1.order_id)
+print("訂單 1 標籤:", order1.tags)  # 輸出: ['特急件']
+
+print("訂單 2 ID:", order2.order_id)  # 生成了全新的 UUID
+print("訂單 2 標籤:", order2.tags)  # 輸出: [] (完全不受訂單 1 污染！)
+```
+
+---
+
+###### 基礎約束與別名映射範例
 
 ```python
 from pydantic import BaseModel, Field
