@@ -4431,18 +4431,88 @@ class ...:
 
 ## @classmethod 類別方法
 
-負責處理類別裡**不需要具體實體物件的事**，用來**管理整個類別的共同狀態、全域設定或替代建構子 (Alternative Constructors / 工廠模式)**
+負責處理類別裡**不需要具體實體物件的事**，用來**站高一級，從整個類別的高度進行統籌與管理**
 
 它的第一個參數固定為 **`cls`（指向類別物件本身）**，能隨子類別繼承動態適應多型（Polymorphism）
 
+### 1. 核心心智模型：三大管理維度
+
+##### 維度 1：管理「全體物件共用的規則與設定」
+
+當你需要修改或查詢某個**會同時影響所有物件的全局狀態**時使用。
+
 ```Python
-class ...:
-    類別屬性 = ...
-    
+class Employee:
+    # 類別全域屬性：全體員工的最低底薪標準
+    base_salary: int = 30000
+
+    def __init__(self, name: str, bonus: int):
+        self.name = name
+        self.bonus = bonus
+
+    # 實體方法：只管這個員工自己賺多少 (self)
+    def get_total_salary(self) -> int:
+        return Employee.base_salary + self.bonus
+
+    # 類別方法：統籌管理全體底薪 (cls)
     @classmethod
-    def 方法名(cls, 參數...):
-        ... # 第一個傳入的必為類別本身 (cls)，cls 和 self 一樣只是慣用名
+    def adjust_base_salary(cls, new_base: int):
+        cls.base_salary = new_base  # 一聲令下，所有員工的底薪同時生效更新！
 ```
+
+##### 維度 2：管理「每個物件的誕生流程 (工廠模式 / 替代建構子)」
+
+當外部資料來源繁多（如 JSON 字典、字串、資料庫回傳值），由類別統一設立標準生產線，審核並製造出合格的物件。
+
+```Python
+class User:
+    def __init__(self, username: str, email: str):
+        self.username = username
+        self.email = email
+
+    # 產線 A：負責把字典轉化為 User 物件
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(username=data["name"], email=data["mail"])
+
+    # 產線 B：負責把 "username:email" 字串解析為 User 物件
+    @classmethod
+    def from_raw_string(cls, raw_text: str):
+        name, mail = raw_text.split(":")
+        return cls(username=name, email=mail)
+```
+
+##### 維度 3：管理「追蹤與盤點所有存活的物件」
+
+由類別本身作為註冊池，隨時盤點目前系統中所有已被建立的實例。
+
+```Python
+class Connection:
+    # 類別管理池：記錄所有建立的連線實例
+    active_connections: list = []
+
+    def __init__(self, host: str):
+        self.host = host
+        Connection.active_connections.append(self)
+
+    # 類別方法：統籌查詢全體物件
+    @classmethod
+    def get_all_hosts(cls) -> list[str]:
+        return [conn.host for conn in cls.active_connections]
+```
+
+---
+
+### 2. 職責邊界：公事歸 classmethod，私事歸普通實體方法
+
+> - **`@classmethod` 管的（公事與全局體系）**：  
+>   - 「這間公司現在總共有幾個人？」（全體統計）  
+>   - 「如何按照履歷標準錄取新員工？」（生產製造工廠）  
+>   - 「全公司的休假與底薪規定統一調整」（全域規則）  
+> 
+> - **普通實體方法 (`self`) 管的（個別物件的私事）**：  
+>   - 「張三今天請假扣薪水 1000 元」（只影響張三自己的狀態）  
+>   - 「李四修改他個人的登入密碼」（只影響李四自己的屬性）
 
 ---
 
