@@ -115,8 +115,8 @@ def add(a: int, b: int) -> int:
 | **`Generator[Yield型別, Send型別, Return型別]`** | `Generator` | **產生器物件**。範例：`def gen() -> Generator[int, None, None]: yield 1`                                               |
 | **`Callable[[參數型別], 回傳型別]`**               | `Callable`  | **可呼叫的函數/物件**（指定參數型別串列與回傳值型別）。範例：`func: Callable[[int, int], int]`                                            |
 | **`Any`**                                  | `Any`       | **任意型別**（跳過型別檢查）。範例：`data: Any = get_raw_data()`                                                              |
-| **`Literal[...]`**                         | `Literal`   | **限定只能為特定的字面值內容**。範例：`mode: Literal["read", "write"] = "read"`                                                |
-| **`Annotated[型別, 元數據, ...]`**              | `Annotated` | **附加元數據的型別**（FastAPI / Pydantic 常用於驗證或依賴注入）。範例：`Age: Annotated[int, Field(gt=0)]`                             |
+| **`Literal[...]`**                         | `Literal`   | **限定只能為特定的字面值內容**。範例：`mode: Literal["read", "write"] = "read"`（literal，文字）                                    |
+| **`Annotated[型別, 元數據, ...]`**              | `Annotated` | **附加元數據的型別**（FastAPI / Pydantic 常用於驗證或依賴注入）。範例：`Age: Annotated[int, Field(gt=0)]`（annotate，註解）                |
 | **`get_origin(型別)`**                       | `Function`  | **取得最外層原始類別**（如 `list[int]` ➔ `list`）。[[#get_origin() 與 get_args() 執行期型別內省神器 (Runtime Introspection)\|詳解]]    |
 | **`get_args(型別)`**                         | `Function`  | **取得內部泛型參數元組**（如 `list[int]` ➔ `(int,)`）。[[#get_origin() 與 get_args() 執行期型別內省神器 (Runtime Introspection)\|詳解]] |
 > 關於 **`Literal[...]`**：
@@ -2587,28 +2587,38 @@ def 函數名稱 (參數, ....): -> 型別注記
 
 而方法則是屬於**某物件或類別**內部的函數，**依附於物件或資料型態**
 
-方法又分為**實體方法、類別方法**
+方法又分為**實體方法、類別方法、靜態方法**
 
 | 名稱 | 定義位置 | 操作對象 | 呼叫方式 | 第一個參數 |
 | --- | --- | --- | --- | --- |
-| **函數 (Function)** | 類別 class 的外面 | 獨立運作，處理傳入的參數 | func_name() | 無強制規定 |
-| **實體方法 (Method)** | 類別 class 的裡面 | 特定的實體物件 (例如 p1, p2) | p1.method() | 必須是 **self** |
-| **類別方法 (Class Method)** | 類別裡面 + @classmethod | 整個類別本身 (共用設定) | Player.method() | 必須是 **cls** |
-
+| **函數 (Function)** | 類別 class 的外面 | 獨立運作，處理傳入的參數 | `func_name()` | 無強制規定 |
+| **實體方法 (Method)** | 類別 class 的裡面 | 特定的實體物件 (例如 `p1`, `p2`) | `p1.method()` | 必須是 **`self`** |
+| **類別方法 (Class Method)** | 類別裡面 + `@classmethod` | 整個類別本身 (共用設定/工廠) | `Player.method()` | 必須是 **`cls`** |
+| **靜態方法 (Static Method)** | 類別裡面 + `@staticmethod` | 獨立工具邏輯 (不依賴實體與類別) | `Player.tool()` | 無強制規定 (無 `self`/`cls`) |
 
 ```Python
+# 1. 外部獨立函數
 func()
 
-m.method() # m 為物件，方法透過物件呼叫
+# 2. 實體方法 (透過物件呼叫，操作 self)
+m.method()
 
-c.c_method()
+# 3. 類別方法 (透過類別或物件呼叫，操作 cls)
+Player.c_method()
+
+# 4. 靜態方法 (透過類別呼叫，純工具計算)
+Player.s_method()
 ```
 
 什麼時候用誰？
 
-- **通用時：**當動作是通用型工具（可以套用在很多不同種類的東西上），用**函數**
+- **通用時：**當動作是全域通用型工具（可套用在各種不同型態上），用**函數**
 
-- **專屬時：**當動作依賴於或專屬於某種特殊資料時，用**方法**
+- **依附實體狀態時：**需要讀取或修改具體物件的屬性時，用**實體方法 (`self`)**
+
+- **管理全類別或替代建構子時：**需要存取類別層級屬性或實現工廠模式時，用**類別方法 (`@classmethod`)**
+
+- **邏輯歸屬類別但獨立無狀態時：**不需要存取 `self` 也無需存取 `cls` 的輔助工具函式，用**靜態方法 (`@staticmethod`)**
 
 ---
 
@@ -4421,21 +4431,108 @@ class ...:
 
 ## @classmethod 類別方法
 
-負責處理類別裡**不需要具體物件的事**，用來**管理整個類別的共同規劃與生產線**
+負責處理類別裡**不需要具體實體物件的事**，用來**管理整個類別的共同狀態、全域設定或替代建構子 (Alternative Constructors / 工廠模式)**
 
-或需要**對所有物件共用的全域屬性進行處理**時
+它的第一個參數固定為 **`cls`（指向類別物件本身）**，能隨子類別繼承動態適應多型（Polymorphism）
 
 ```Python
 class ...:
-    ...
+    類別屬性 = ...
     
     @classmethod
-    def ...(cls, ...):
-        ... # 第一個傳入的必為類別本身，cls 和 self 一樣只是慣用名
-    @classmethod
-    def ...(cls, ...):
-        ... # 可以有很多個類別方法
+    def 方法名(cls, 參數...):
+        ... # 第一個傳入的必為類別本身 (cls)，cls 和 self 一樣只是慣用名
 ```
+
+---
+
+## @staticmethod 靜態方法
+
+將一個**不依賴實體物件 (`self`)，也不依賴類別屬性 (`cls`) 的獨立工具函式**，寄宿在類別的命名空間內部
+
+它的本質就是一個**寄生在類別裡的普通函式**，目的是為了**邏輯歸類 (Logical Grouping)**，讓程式碼更具內聚力與可讀性
+
+```Python
+class ...:
+    @staticmethod
+    def 工具方法名(參數...):
+        ... # 不需要 self，也不需要 cls，純粹進行運算
+```
+
+> **生動比喻單元**：  
+> - **實體方法 (`self`)**：像「每個員工個人的薪資計算機」，必須綁定具體某個員工的工時與底薪。  
+> - **類別方法 (`cls`)**：像「公司的財務主管」，掌管整個公司的員工總數、全體調薪比例，或是用特定格式批次錄取新員工（工廠）。  
+> - **靜態方法 (`@staticmethod`)**：像「放在公司茶水間牆上的計算機」，誰都可以拿來按 `1 + 1 = 2`，它不關心是哪位員工來算，也不在乎公司目前的總資產。
+
+---
+
+## 實體方法 vs 類別方法 vs 靜態方法三大金剛對照
+
+| 比較維度 | 實體方法 (Instance Method) | 類別方法 (Class Method) | 靜態方法 (Static Method) |
+| :--- | :--- | :--- | :--- |
+| **裝飾器標記** | 無（預設常態方法） | **`@classmethod`** | **`@staticmethod`** |
+| **第一個隱式參數** | **`self`**（指向當前實體物件） | **`cls`**（指向當前類別物件） | **無**（像普通函式一樣自由傳參） |
+| **存取實體屬性 (`self.x`)** | **可以**（讀寫各物件專屬狀態） | **不行**（無法感知具體物件） | **不行**（無法感知具體物件） |
+| **存取類別屬性 (`cls.y`)** | 可以（透過 `self.__class__.y`） | **可以**（直接透過 `cls.y` 讀寫） | 不行（除非硬寫類別名稱） |
+| **子類別繼承感知 (多型)** | 依實體動態派發 | **支援**（`cls` 會自動指向子類別） | 不支援（與繼承體系無直接關聯） |
+| **推薦呼叫方式** | `物件.方法()` | `類別.方法()` | `類別.方法()` |
+| **最佳使用情境** | 操作物件自身狀態（如攻擊、存錢） | 實現工廠方法（如 `from_dict`）、統計全類別實例數 | 格式校驗、數學計算、轉換工具函式 |
+
+---
+
+### 實戰程式碼證明
+
+```Python
+from datetime import datetime
+
+class User:
+    # 類別屬性 (全體共用)
+    total_users: int = 0
+
+    def __init__(self, name: str, age: int):
+        # 實體屬性 (各物件獨立)
+        self.name = name
+        self.age = age
+        User.total_users += 1
+
+    # 1. 實體方法：依賴具體物件狀態 (self)
+    def introduce(self) -> str:
+        return f"我是 {self.name}，今年 {self.age} 歲"
+
+    # 2. 類別方法：工廠模式，透過出生年份建立物件 (cls)
+    @classmethod
+    def from_birth_year(cls, name: str, birth_year: int):
+        current_year = datetime.now().year
+        calculated_age = current_year - birth_year
+        # 利用 cls(...) 動態實例化，即便子類別繼承也能精準產生子類別實例！
+        return cls(name=name, age=calculated_age)
+
+    # 3. 靜態方法：純工具校驗函式，不依賴 self 也不依賴 cls
+    @staticmethod
+    def is_adult(age: int) -> bool:
+        return age >= 18
+
+
+# 1. 透過標準建構子建立實體，並呼叫實體方法
+u1 = User("Matthew", 20)
+print(u1.introduce())  # 輸出: 我是 Matthew，今年 20 歲
+
+# 2. 透過類別方法 (工廠) 建立實體
+u2 = User.from_birth_year("Alice", 2008)
+print(u2.introduce())  # 輸出: 我是 Alice，今年 18 歲
+
+# 3. 透過類別直接呼叫靜態方法進行校驗
+print(User.is_adult(16))  # 輸出: False
+print(User.is_adult(22))  # 輸出: True
+```
+
+> **小提醒：為什麼不直接寫在類別外面的全域函式？**  
+> 如果某個函式（例如 `is_adult`）在邏輯上只服務於 `User` 類別，寫在類別外部容易污染模組的全域命名空間。  
+> 將其標註為 `@staticmethod` 放入 `User` 內部，能形成清晰的**語意邊界（如 `User.is_adult(...)`）**，讓程式碼維護性極大幅度提升。
+
+> **開發天條：替代建構子工廠嚴禁使用 `@staticmethod`**  
+> 當需要撰寫 `from_dict()` 或 `from_json()` 等工廠方法時，**務必使用 `@classmethod`**！  
+> 如果用 `@staticmethod`，內部只能硬編碼寫死 `return User(...)`；一旦未來有 `class VipUser(User)` 繼承，呼叫 `VipUser.from_dict()` 時產生的依然是父類別 `User`，破壞了物件導向的多型機制！
 
 ---
 
