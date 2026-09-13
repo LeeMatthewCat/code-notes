@@ -134,6 +134,10 @@ except ValidationError as e:
   - `exclude_unset`：布林值。設為 `True` 時，**只會匯出建立時有明確賦值的欄位**（忽略使用預設值的欄位，常用於 HTTP PATCH 局部更新）。
   - `exclude_none`：布林值。設為 `True` 時，過濾掉所有值為 `None` 的欄位。
   - `by_alias`：布林值。設為 `True` 時，使用 `Field(alias="...")` 定義的別名輸出。
+  - `indent`（**僅限 `model_dump_json()`**）：整數。設定美化排版的縮排空格數（如 `indent=2` 或 `indent=4`）。預設為 `None`（輸出一行壓縮字串，最省網路傳輸頻寬）。
+
+> **小提醒：為什麼 `model_dump()` 沒有 `indent` 參數？**  
+> `model_dump()` 回傳的是 Python 原生記憶體字典物件 (`dict`)，字典是純資料結構沒有視覺文字排版概念；而 `model_dump_json()` 產出的是一維文字字串 (`str`)，因此支援 `indent` 進行換行美化。
 
 ```python
 from pydantic import BaseModel
@@ -146,7 +150,7 @@ class Article(BaseModel):
 
 art = Article(title="Python Pydantic 指南", views=150)
 
-# 1. 轉為原生字典
+# 1. 轉為原生字典 (dict 沒有 indent 參數)
 print(art.model_dump())
 # 輸出: {'title': 'Python Pydantic 指南', 'views': 150, 'draft': True, 'secret_note': None}
 
@@ -155,9 +159,21 @@ patch_data = art.model_dump(exclude_unset=True, exclude_none=True)
 print(patch_data)
 # 輸出: {'title': 'Python Pydantic 指南', 'views': 150}
 
-# 3. 直接序列化為 JSON 字串
-json_str = art.model_dump_json(indent=2)
-print(json_str)
+# 3. 序列化為 JSON 字串：預設壓縮一行 (最省傳輸流量)
+compact_json = art.model_dump_json()
+print(compact_json)
+# 輸出: {"title":"Python Pydantic 指南","views":150,"draft":true,"secret_note":null}
+
+# 4. 序列化為 JSON 字串：指定 indent=2 進行美化排版 (易於日誌閱讀與除錯)
+pretty_json = art.model_dump_json(indent=2)
+print(pretty_json)
+# 輸出:
+# {
+#   "title": "Python Pydantic 指南",
+#   "views": 150,
+#   "draft": true,
+#   "secret_note": null
+# }
 ```
 
 ---
@@ -243,16 +259,16 @@ print(clean_numbers)  # 輸出: [10, 20, 30] (全部轉成 int！)
 - **語法**：`欄位名稱: 型別 = Field(default=..., gt=..., lt=..., ...)`
 - **核心參數字典對照表**：
 
-| 參數名稱                            | 適用型別    | 說明與範例                                                                                                            |
-| :------------------------------ | :------ | :--------------------------------------------------------------------------------------------------------------- |
-| **`default`**                   | 任意      | 欄位的**靜態預設值**。適合不可變的常數（如 `default=0`、`default="user"`）。若無預設值使用 `...` (Ellipsis)。                     |
-| **`default_factory`**           | 可呼叫函式  | 欄位的**動態工廠函式**。傳入函式名稱（如 `list`、`datetime.now`、`uuid4`），每次建立新實例時獨立呼叫生成，杜絕記憶體共享污染與時間鎖死。 |
-| **`gt` / `ge`**                 | 數值型別    | 大於 (`>`) / 大於等於 (`>=`)。範例：`gt=0`、`ge=18`。（greater than / greater equal）                                          |
-| **`lt` / `le`**                 | 數值型別    | 小於 (`<`) / 小於等於 (`<=`)。範例：`lt=100`、`le=120`。（less than / less equal）                                             |
-| **`min_length` / `max_length`** | 字串 / 容器 | 限制字串或清單的最短 / 最長長度。範例：`min_length=6`。                                                                             |
-| **`pattern`**                   | 字串      | 正則表達式匹配字串。範例：`pattern=r"^09\d{8}$"` (台灣手機門號)。                                                                    |
-| **`alias`**                     | 字串      | 外部傳入與輸出時使用的欄位別名（如對接前端駝峰命名 `userId`）。（alias，別名）                                                                   |
-| **`description`**               | 字串      | 欄位說明文件（會被寫入 `model_json_schema()` 供 AI 或 Swagger 閱讀）。                                                            |
+| 參數名稱                            | 適用型別    | 說明與範例                                                                                |
+| :------------------------------ | :------ | :----------------------------------------------------------------------------------- |
+| **`default`**                   | 任意      | 欄位的**靜態預設值**。適合不可變的常數（如 `default=0`、`default="user"`）。若無預設值使用 `...` (Ellipsis)。      |
+| **`default_factory`**           | 可呼叫函式   | 欄位的**動態工廠函式**。傳入函式名稱（如 `list`、`datetime.now`、`uuid4`），每次建立新實例時獨立呼叫生成，杜絕記憶體共享污染與時間鎖死。 |
+| **`gt` / `ge`**                 | 數值型別    | 大於 (`>`) / 大於等於 (`>=`)。範例：`gt=0`、`ge=18`。（greater than / greater equal）              |
+| **`lt` / `le`**                 | 數值型別    | 小於 (`<`) / 小於等於 (`<=`)。範例：`lt=100`、`le=120`。（less than / less equal）                 |
+| **`min_length` / `max_length`** | 字串 / 容器 | 限制字串或清單的最短 / 最長長度。範例：`min_length=6`。                                                 |
+| **`pattern`**                   | 字串      | 正則表達式匹配字串。範例：`pattern=r"^09\d{8}$"` (台灣手機門號)。                                        |
+| **`alias`**                     | 字串      | 外部傳入與輸出時使用的欄位別名（如對接前端駝峰命名 `userId`）。（alias，別名）                                       |
+| **`description`**               | 字串      | 欄位說明文件（會被寫入 `model_json_schema()` 供 AI 或 Swagger 閱讀）。                                |
 
 ###### default vs default_factory 核心差異 (靜態死值 vs 動態工廠)
 
