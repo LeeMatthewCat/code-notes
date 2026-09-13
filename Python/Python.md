@@ -4459,28 +4459,141 @@ class ...:
         ... # 不需要 self，也不需要 cls，純粹進行運算
 ```
 
+---
+
+## @classmethod vs @staticmethod 深度差異剖析
+
+很多人容易混淆這兩者，因為**它們都可以直接用「類別名.方法名()」呼叫，且都不需要先建立實體物件**。
+
+但兩者的底層機制與適用場景存在著根本性的差異：
+
+### 1. 本質與感知能力差異
+
+- **`@classmethod`（有感知能力）**：
+  - Python 會**強制且自動**把「當前呼叫的類別本身」當作第一個參數（`cls`）傳入。
+  - 它**清楚知道自己是哪一個類別**，能存取類別屬性，也能用 `cls(...)` 動態實例化新物件。
+
+- **`@staticmethod`（完全無感知）**：
+  - Python **不會傳入任何隱式參數**（既沒有 `self` 也沒有 `cls`）。
+  - 它**根本不知道也不在乎自己在哪個類別裡**，本質上就是個普通函式，僅為了命名空間管理而寄宿在類別底下。
+
 > **生動比喻單元**：  
-> - **實體方法 (`self`)**：像「每個員工個人的薪資計算機」，必須綁定具體某個員工的工時與底薪。  
-> - **類別方法 (`cls`)**：像「公司的財務主管」，掌管整個公司的員工總數、全體調薪比例，或是用特定格式批次錄取新員工（工廠）。  
-> - **靜態方法 (`@staticmethod`)**：像「放在公司茶水間牆上的計算機」，誰都可以拿來按 `1 + 1 = 2`，它不關心是哪位員工來算，也不在乎公司目前的總資產。
+> - **`@classmethod`（工廠產線總監）**：  
+>   總公司（父類別）有一套標準出貨流程。當分公司（子類別）調用產線時，總監看了一眼來的人是分公司（`cls`），出貨單上就自動蓋上分公司的印章發貨。  
+> - **`@staticmethod`（辦公桌上的計算機）**：  
+>   辦公室桌上的計算機只負責算 `1 + 1 = 2`。無論是董事長還是實習生來按，計算機完全不關心是誰在按，只把計算結果吐回去。
 
 ---
 
-## 實體方法 vs 類別方法 vs 靜態方法三大金剛對照
+### 2. 底層參數傳遞機制對照
+
+```Python
+class Demo:
+    @classmethod
+    def class_func(cls, x):
+        pass
+
+    @staticmethod
+    def static_func(x):
+        pass
+
+# 呼叫時 Python 的底層行為：
+# 1. 類別方法：底層實際執行 Demo.class_func(Demo, 10) ➔ 自動注入類別本身
+Demo.class_func(10)
+
+# 2. 靜態方法：底層實際執行 static_func(10) ➔ 原封不動傳入 10，無任何隱藏參數
+Demo.static_func(10)
+```
+
+---
+
+### 3. 致命差異：子類別繼承時的表現（工廠模式）
+
+這是區分兩者最重要的核心天條。
+
+##### ❌ 錯誤示範：使用 @staticmethod 當工廠（繼承破功）
+
+```Python
+class Pizza:
+    def __init__(self, size: int):
+        self.size = size
+
+    @staticmethod
+    def standard_pizza():
+        # 因為 staticmethod 沒有 cls，只能硬編碼寫死 Pizza
+        return Pizza(size=12)
+
+class SeafoodPizza(Pizza):
+    # 海鮮披薩繼承自 Pizza
+    pass
+
+# 當子類別呼叫這個工廠時：
+my_pizza = SeafoodPizza.standard_pizza()
+
+print(type(my_pizza))
+# 輸出: <class '__main__.Pizza'> 
+# 陷阱：明明是 SeafoodPizza 呼叫的，產出來的居然是一般的 Pizza！繼承完全失效！
+```
+
+##### ✅ 正確示範：使用 @classmethod 當工廠（動態多型）
+
+```Python
+class Pizza:
+    def __init__(self, size: int):
+        self.size = size
+
+    @classmethod
+    def standard_pizza(cls):
+        # cls 是動態的！誰呼叫，cls 就代表誰！
+        return cls(size=12)
+
+class SeafoodPizza(Pizza):
+    pass
+
+# 情況 A：父類別呼叫，cls 是 Pizza ➔ 產出 Pizza 物件
+p1 = Pizza.standard_pizza()
+print(type(p1))  # 輸出: <class '__main__.Pizza'>
+
+# 情況 B：子類別呼叫，cls 自動變成 SeafoodPizza ➔ 產出 SeafoodPizza 物件！
+p2 = SeafoodPizza.standard_pizza()
+print(type(p2))  # 輸出: <class '__main__.SeafoodPizza'> (完美支援多型！)
+```
+
+---
+
+### 4. 快速選型決策指南
+
+當你在類別裡撰寫一個不需要具體實體 `self` 的方法時：
+
+```text
+你需要用到類別本身的資訊嗎？
+（例如：存取類別共用屬性、或是要用 cls(...) 動態建立新物件）
+│
+├─► 需要  ➔ 選擇【@classmethod】
+│          （典型場景：from_dict()、from_json() 替代建構子、統計全類別實例數）
+│
+└─► 不需要 ➔ 選擇【@staticmethod】
+           （典型場景：驗證 Email 格式、檢查密碼強度、純數學演算法）
+```
+
+---
+
+### 5. 實體方法 vs 類別方法 vs 靜態方法三大金剛全景矩陣
 
 | 比較維度 | 實體方法 (Instance Method) | 類別方法 (Class Method) | 靜態方法 (Static Method) |
 | :--- | :--- | :--- | :--- |
 | **裝飾器標記** | 無（預設常態方法） | **`@classmethod`** | **`@staticmethod`** |
 | **第一個隱式參數** | **`self`**（指向當前實體物件） | **`cls`**（指向當前類別物件） | **無**（像普通函式一樣自由傳參） |
+| **感知能力** | 感知**具體物件**狀態 | 感知**所屬類別**（知道是誰呼叫） | **完全無感知**（純粹計算） |
 | **存取實體屬性 (`self.x`)** | **可以**（讀寫各物件專屬狀態） | **不行**（無法感知具體物件） | **不行**（無法感知具體物件） |
-| **存取類別屬性 (`cls.y`)** | 可以（透過 `self.__class__.y`） | **可以**（直接透過 `cls.y` 讀寫） | 不行（除非硬寫類別名稱） |
-| **子類別繼承感知 (多型)** | 依實體動態派發 | **支援**（`cls` 會自動指向子類別） | 不支援（與繼承體系無直接關聯） |
+| **存取類別屬性 (`cls.y`)** | 可以（透過 `self.__class__.y`） | **可以**（直接透過 `cls.y` 讀寫） | 不行（除非硬編碼寫死類別名） |
+| **動態實例化 (工廠)** | 不適用 | **支援**（`return cls(...)` 支援多型） | 不支援（只能寫死具體類別名） |
 | **推薦呼叫方式** | `物件.方法()` | `類別.方法()` | `類別.方法()` |
-| **最佳使用情境** | 操作物件自身狀態（如攻擊、存錢） | 實現工廠方法（如 `from_dict`）、統計全類別實例數 | 格式校驗、數學計算、轉換工具函式 |
+| **最佳使用情境** | 操作物件自身狀態（如攻擊、存錢） | 實現工廠方法（如 `from_dict`）、管理類別狀態 | 格式校驗、純運算、命名空間歸類工具 |
 
 ---
 
-### 實戰程式碼證明
+### 6. 綜合實戰程式碼範例
 
 ```Python
 from datetime import datetime
@@ -4526,13 +4639,9 @@ print(User.is_adult(16))  # 輸出: False
 print(User.is_adult(22))  # 輸出: True
 ```
 
-> **小提醒：為什麼不直接寫在類別外面的全域函式？**  
-> 如果某個函式（例如 `is_adult`）在邏輯上只服務於 `User` 類別，寫在類別外部容易污染模組的全域命名空間。  
-> 將其標註為 `@staticmethod` 放入 `User` 內部，能形成清晰的**語意邊界（如 `User.is_adult(...)`）**，讓程式碼維護性極大幅度提升。
-
 > **開發天條：替代建構子工廠嚴禁使用 `@staticmethod`**  
 > 當需要撰寫 `from_dict()` 或 `from_json()` 等工廠方法時，**務必使用 `@classmethod`**！  
-> 如果用 `@staticmethod`，內部只能硬編碼寫死 `return User(...)`；一旦未來有 `class VipUser(User)` 繼承，呼叫 `VipUser.from_dict()` 時產生的依然是父類別 `User`，破壞了物件導向的多型機制！
+> 若誤用 `@staticmethod`，內部只能寫死 `return User(...)`；一旦未來有 `class VipUser(User)` 繼承，呼叫 `VipUser.from_dict()` 時產生的依然會是父類別 `User`，破壞了物件導向的多型機制！
 
 ---
 
