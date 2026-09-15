@@ -96,6 +96,8 @@ Order(
 - **核心特性（智慧型別轉換 Coercion）**：
   - 若傳入的型別與標註不符，但**可以安全轉換**（如傳入字串 `"25"` 給 `int`、傳入 `"true"` 給 `bool`），Pydantic 會自動完成轉換！
   - 若無法轉換（如傳入 `"abc"` 給 `int`），會立即拋出 `ValidationError`。
+- **回傳值**：
+  - `Model`：通過型別驗證與自動轉型後的具體模型實例物件。
 
 ```python
 from pydantic import BaseModel, ValidationError
@@ -135,6 +137,9 @@ except ValidationError as e:
   - `exclude_none`：布林值。設為 `True` 時，過濾掉所有值為 `None` 的欄位。
   - `by_alias`：布林值。設為 `True` 時，使用 `Field(alias="...")` 定義的別名輸出。
   - `indent`（**僅限 `model_dump_json()`**）：整數。設定美化排版的縮排空格數（如 `indent=2` 或 `indent=4`）。預設為 `None`（輸出一行壓縮字串，最省網路傳輸頻寬）。
+- **回傳值**：
+  - `model.model_dump()` ➔ `dict[str, Any]`：包含模型所有欄位鍵值的原生 Python 字典。
+  - `model.model_dump_json()` ➔ `str`：序列化後的標準 JSON 純文字字串。
 
 > **小提醒：為什麼 `model_dump()` 沒有 `indent` 參數？**  
 > `model_dump()` 回傳的是 Python 原生記憶體字典物件 (`dict`)，字典是純資料結構沒有視覺文字排版概念；而 `model_dump_json()` 產出的是一維文字字串 (`str`)，因此支援 `indent` 進行換行美化。
@@ -184,6 +189,12 @@ print(pretty_json)
 - **語法**：
   - `Model.model_validate(dict_data)`
   - `Model.model_validate_json(json_string)`
+- **參數說明**：
+  - `dict_data` (`dict`)：欲進行驗證的原生 Python 字典資料。
+  - `json_string` (`str | bytes`)：欲進行反序列化與驗證的 JSON 字串或二進位位元組串。
+- **回傳值**：
+  - `Model.model_validate()` ➔ `Model`：通過資料校驗並成功建立的具體模型實例物件。
+  - `Model.model_validate_json()` ➔ `Model`：由 JSON 字串解析並通過校驗後的具體模型實例物件。
 
 ```python
 from pydantic import BaseModel
@@ -209,7 +220,11 @@ print(f"從 JSON 建立: {p2.name}, 價格: {p2.price}")
 ##### TypeAdapter() 原生型別與頂層容器適配器
 
 - **使用時機**：當你要驗證或解析的資料是**頂層清單（如 `list[Item]`）、字典（`dict[str, int]`）、原生型別（`int`）或聯合型別（`Union`）**，**不想為此額外定義一個無意義的 `BaseModel` 包裝類別**時使用。
-- **語法**：`adapter = TypeAdapter(目標型別標註)`
+- **語法**：`adapter = TypeAdapter(type)`
+- **參數說明**：
+  - `type`：欲適配的目標型別標註（如 `list[Item]`、`dict[str, int]`、`Union[str, int]` 或原生型別 `int`）。
+- **回傳值**：
+  - `TypeAdapter[T]`：綁定目標型別標註的適配器實例物件。
 - **核心方法差異對照表**：
 
 | 方法名稱 | 處理方向 | 接收輸入型別 (Input) | 回傳輸出型別 (Output) | 核心功能與適用情境 |
@@ -257,6 +272,8 @@ print(clean_numbers)  # 輸出: [10, 20, 30] (全部轉成 int！)
 
 - **使用時機**：需要對欄位設定預設值、取值範圍限制（如大於零、字串長度）、正則表達式、別名對照或欄位說明時使用。
 - **語法**：`欄位名稱: 型別 = Field(default=..., gt=..., lt=..., ...)`
+- **回傳值**：
+  - `FieldInfo`：包含該欄位預設值、取值約束與元數據說明的欄位定義物件（在類別定義時賦值給屬性，供 Pydantic 解析）。
 - **核心參數字典對照表**：
 
 | 參數名稱                            | 適用型別    | 說明與範例                                                                                |
@@ -376,6 +393,9 @@ print(acc.user_token)  # 輸出: tok_xyz123
   - `mode='after'` (預設)：在 Pydantic 完成基礎型別轉換**之後**執行驗證（`v` 的型別已被轉正）。
   - `mode='before'`：在 Pydantic 型別轉換**之前**執行（`v` 是原始輸入的原始值）。
 - **規範要求**：必須宣告為類別方法（通常第一個參數為 `cls`），驗證通過**必須將最終的值 `return v` 回傳**；若驗證失敗拋出 `ValueError`。
+- **回傳值**：
+  - `Callable`：裝飾器函式（裝飾於類別方法上）。
+  - *(被裝飾之方法)*：回傳驗證清洗後的欄位值 `v`。
 
 ```python
 from pydantic import BaseModel, field_validator
@@ -407,6 +427,9 @@ class RegisterForm(BaseModel):
 - **使用時機**：需要**同時比對多個欄位之間的關聯邏輯**（例如：「密碼」與「確認密碼」是否一致、「開始日期」是否小於「結束日期」）時使用。
 - **語法**：`@model_validator(mode='after')`
 - **規範要求**：在 `mode='after'` 下，方法的參數為 `self`，驗證通過**必須回傳 `self`**。
+- **回傳值**：
+  - `Callable`：裝飾器函式（裝飾於模型驗證方法上）。
+  - *(被裝飾之方法)*：在 `mode='after'` 下必須回傳 `self`（模型實例本身）；在 `mode='before'` 下必須回傳輸入的原始字典資料 `data`。
 
 ```python
 from pydantic import BaseModel, model_validator
@@ -434,6 +457,8 @@ class ChangePasswordForm(BaseModel):
   - `extra='forbid'`：**禁止傳入未定義的額外欄位**（若傳入多餘欄位直接報錯，提高安全性）。
   - `str_strip_whitespace=True`：**自動去除所有字串欄位的前後空格**。
   - `populate_by_name=True`：設定了 `alias` 後，同時允許用「欄位本名」或「別名」建立物件。
+- **回傳值**：
+  - `ConfigDict`：符合 Pydantic 模型配置規範的鍵值字典物件。
 
 ```python
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -567,6 +592,8 @@ list_schema = adapter.json_schema()
 - **`by_alias=True`**：布林值。設定為 `True` 時，Schema 的欄位名稱會使用 `Field(alias="...")` 定義的別名。
 - **`mode='validation'` (預設)**：產出用於**驗證輸入資料**的 Schema。
 - **`mode='serialization'`**：產出用於**序列化輸出資料**的 Schema。
+- **回傳值**：
+  - `dict[str, Any]`：符合標準 JSON Schema / OpenAPI 規範的資料結構描述字典。
 
 ---
 
