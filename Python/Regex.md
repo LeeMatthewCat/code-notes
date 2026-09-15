@@ -249,17 +249,38 @@ print(items)  # 輸出: ['Python', 'Java', 'Rust', 'Go', 'C++']
 
 - **使用時機**：當同一個 Regex 規則會在迴圈中重複調用上千次，需要大幅提升執行效能時使用。
 - **語法**：`re.compile(pattern, flags=0)`
+- **參數說明**：
+  - `pattern`：要編譯的正規表達式字串（強烈建議使用原生字串 `r"..."` 以免除跳脫符號困擾）。
+  - `flags`：修飾標誌（整數遮罩，預設為 `0` 代表無修飾）。用來改變正則引擎的匹配行為，詳見 [[#8. 常用修飾標誌 (Regex Flags) 深度剖析|8. 常用修飾標誌專章]]。
+    - **常見修飾標誌**：
+      - `re.IGNORECASE` (`re.I`)：忽略英文字母大小寫。
+      - `re.MULTILINE` (`re.M`)：多行模式，讓 `^` 與 `$` 能錨定「每一行」的開頭與結尾。
+      - `re.DOTALL` (`re.S`)：單行穿透模式，讓萬用點 `.` 匹配包含換行符 `\n` 在內的所有字元。
+      - `re.VERBOSE` (`re.X`)：詳細註解排版模式，忽略正則內的空白與換行，支援使用 `#` 撰寫註解。
+      - `re.ASCII` (`re.A`)：純 ASCII 模式，讓 `\w`、`\d` 只匹配 ASCII 字元，不匹配中文字元。
+    - **多個標誌組合方式**：使用按位或運算子 `|`（Bitwise OR）串接（例如 `flags=re.I | re.M | re.S`）。
 - **回傳值**：
   - `re.Pattern`：編譯完成的正規表達式 Pattern 物件。
+
+> **核心優勢：標誌固化編譯**  
+> 在 `compile()` 階段指定的 `flags` 會被**永久固化編譯進 Pattern 物件中**。後續調用 `pattern.search()`、`pattern.findall()` 或 `pattern.sub()` 時，無需重複傳入 `flags` 參數，所有操作自動繼承該修飾效果。
 
 ```python
 import re
 
-# 1. 預先編譯 Regex 規則
-email_pattern = re.compile(r"[\w.-]+@[\w.-]+\.\w+")
+# 1. 預先編譯 Regex 規則，並同時啟用忽略大小寫 (re.I) 與詳細註解排版 (re.X)
+email_pattern = re.compile(
+    r"""
+    ^[\w.-]+        # 帳號名稱 (字母、數字、點、減號)
+    @               # 必須包含 @ 符號
+    [\w.-]+         # 網域名稱
+    \.\w{2,}$       # 頂級網域 (至少 2 個字母)
+    """,
+    flags=re.IGNORECASE | re.VERBOSE
+)
 
-# 2. 重複高效使用
-user_input = "contact@example.com"
+# 2. 重複高效使用 (無需再次傳入 flags，自動繼承編譯設定)
+user_input = "Contact@Example.COM"
 if email_pattern.search(user_input):
     print("有效 Email！")
 ```
