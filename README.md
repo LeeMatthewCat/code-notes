@@ -22,7 +22,7 @@
 * **[SQLite.md](./Python/SQLite.md)**：Python 內建輕量化關聯資料庫的使用與操作實務。
 * **[Regex.md](./Python/Regex.md)**：正則表達式語法、模式匹配、文字清洗與實戰應用。
 * **核心模組詳解**：
-  * [os.md](./Python/路徑相關/os.md) / [Pathlib.md](./Python/路徑相關/Pathlib.md)：現代檔案路徑處理與系統互動。
+  * [os.md](./Python/路徑與檔案相關/os.md) / [Pathlib.md](./Python/路徑與檔案相關/Pathlib.md) / [shutil.md](./Python/路徑與檔案相關/shutil.md)：現代檔案路徑處理、系統互動與高階檔案操作。
   * [concurrent.futures.md](./Python/多線程相關/concurrent.futures.md) / [threading.md](./Python/多線程相關/threading.md) / [Subprocess.md](./Python/多線程相關/Subprocess.md) / [queue.md](./Python/多線程相關/queue.md)：並行、多執行緒與子行程控制。
   * [HTTPX.md](./Python/網頁相關/HTTPX.md) / [readability.md](./Python/網頁相關/readability.md) / [html2text.md](./Python/html2text.md)：現代非同步網路請求與網頁內容擷取。
   * [Rich.md](./Python/終端美化/Rich.md) / [Questionary.md](./Python/終端美化/Questionary.md) / [prompt_toolkit.md](./Python/終端美化/prompt_toolkit.md) / [Live.md](./Python/終端美化/Live.md)：互動式終端 UI 與控制台美化。

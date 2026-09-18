@@ -157,6 +157,9 @@ print(f"轉換後字串: {s} | 型別: {type(s)}")  # 輸出: ... | 型別: <cla
 | **[[#Path.stem 主體檔案名稱\|p.stem]]** | 屬性 (`str`) | **取得去除副檔名後的主體檔名** | 產出同名輸出檔（如轉檔時保留主檔名） |
 | **[[#Path.suffix 最後一個副檔名\|p.suffix]]** | 屬性 (`str`) | **取得最後一個副檔名** (含點號 `.`) | 判定檔案類型（如 `.json`、`.py`、`.csv`） |
 | **[[#Path.suffixes 所有副檔名清單\|p.suffixes]]** | 屬性 (`list[str]`) | **取得所有副檔名清單** | 處理多重副檔名壓縮檔（如 `.tar.gz`） |
+| **[[#Path.with_suffix() 替換副檔名\|p.with_suffix()]]** | 物件方法 | **衍生替換副檔名後的新 Path 物件** | 批次轉檔（如 `.csv` 轉 `.json`）、移除副檔名 |
+| **[[#Path.with_name() 替換完整檔案名稱\|p.with_name()]]** | 物件方法 | **衍生替換完整檔名後的新 Path 物件** | 修改同目錄下的檔名、生成同目錄備份檔 |
+| **[[#Path.with_stem() 替換主體檔案名稱 (Python 3.9+)\|p.with_stem()]]** | 物件方法 | **衍生替換主體檔名後的新 Path 物件** | 保留原副檔名僅修改主檔名（Python 3.9+） |
 | **[[#Path.parent 直接上一層父目錄\|p.parent]]** | 屬性 (`Path`) | **取得直接上一層父目錄物件** | 往上找上一層目錄、建立同目錄下的其他檔案 |
 | **[[#Path.parents 所有祖先目錄序列\|p.parents]]** | 屬性 (序列) | **取得所有祖先層級目錄序列** | 依索引 `[0]`, `[1]` 向上回溯專案根目錄 |
 | **[[#Path.parts 路徑切分元組\|p.parts]]** | 屬性 (`tuple[str]`) | **取得所有路徑片段切分元組** | 檢查路徑是否包含特定層級名稱（如 `"temp" in p.parts`） |
@@ -370,6 +373,157 @@ from pathlib import Path
 p = Path("/Users/matthew/src/sales_report.tar.gz")
 print(p.suffixes)  # 輸出: ['.tar', '.gz']
 ```
+
+---
+
+##### Path.with_suffix() 替換副檔名
+
+- **使用時機**：
+  - 批次變更檔案類型（例如將 `.csv` 轉為 `.json`、將 `.jpg` 轉為 `.png`）。
+  - 為檔案添加或變更備份標記（例如改為 `.bak`）。
+  - 移除檔案的副檔名（傳入空字串 `""`）。
+  - 為原本沒有副檔名的檔案附加副檔名。
+- **語法**：`new_path = path.with_suffix(suffix)`
+- **參數說明**：
+  - `suffix` (`str`)：目標副檔名字串。
+    - 若為非空字串，**必須以點號 `.` 開頭**（例如 `".json"`）。若未帶點號（例如 `"json"`），將拋出 `ValueError: Invalid suffix 'json'`。
+    - 若傳入空字串 `""`，代表**移除**最末端的副檔名。
+- **回傳值**：`Path` 物件（macOS/Linux 為 `PosixPath`，Windows 為 `WindowsPath`）。
+
+> **注意事項：記憶體不可變性與多重副檔名陷阱**：
+> 1. **純記憶體衍生，不修改硬碟**：`Path` 物件是不可變物件 (Immutable)。呼叫 `with_suffix()` 僅在記憶體中建立並回傳全新路徑，**絕不會自動重新命名硬碟上的實體檔案**。若要修改實體檔案，需搭配呼叫 `.rename()`。
+> 2. **多重副檔名陷阱**：`with_suffix()` 永遠只替換**最末端的一個副檔名**。例如 `report.tar.gz` 呼叫 `.with_suffix(".zip")` 會得到 `report.tar.zip`，而非 `report.zip`。若需替換全部副檔名，應結合字串切分或 `with_name()`。
+> 3. **無副檔名檔案行為**：若原路徑無副檔名（如 `Path("README")`），呼叫 `.with_suffix(".md")` 會直接在其後附加副檔名，成為 `Path("README.md")`。
+> 4. **點號開頭隱藏檔行為**：如 `Path(".gitignore")`，其 `suffix` 為空（`stem` 為 `".gitignore"`），呼叫 `.with_suffix(".txt")` 會得到 `Path(".gitignore.txt")`。
+
+```python
+from pathlib import Path
+
+p = Path("/data/reports/monthly_sales.csv")
+
+# 1. 正常替換副檔名
+new_p = p.with_suffix(".json")
+print(new_p)  # 輸出: /data/reports/monthly_sales.json
+print(p)      # 原路徑保持不變: /data/reports/monthly_sales.csv (不可變性)
+
+# 2. 移除副檔名 (傳入空字串)
+no_ext_p = p.with_suffix("")
+print(no_ext_p)  # 輸出: /data/reports/monthly_sales
+
+# 3. 為原本無副檔名的檔案附加副檔名
+readme = Path("/docs/README")
+print(readme.with_suffix(".md"))  # 輸出: /docs/README.md
+
+# 4. 多重副檔名陷阱：僅替換最後一個副檔名
+tar_p = Path("/backup/archive.tar.gz")
+print(tar_p.with_suffix(".zip"))  # 輸出: /backup/archive.tar.zip (注意仍保留 .tar)
+
+# 徹底替換多重副檔名的解法：利用 split 或 with_name
+clean_p = tar_p.with_name(tar_p.name.split(".")[0] + ".zip")
+print(clean_p)  # 輸出: /backup/archive.zip
+
+# 5. 錯誤示範：未帶點號將拋出 ValueError
+try:
+    p.with_suffix("json")
+except ValueError as e:
+    print(f"錯誤捕捉: {e}")  # 輸出: Invalid suffix 'json'
+
+# 6. 硬碟實體檔案更名流程 (需搭配 rename)
+# file_path = Path("test.txt")
+# file_path.write_text("hello", encoding="utf-8")
+# target_path = file_path.with_suffix(".bak")
+# file_path.rename(target_path)  # 真正完成硬碟重命名
+```
+
+---
+
+##### Path.with_name() 替換完整檔案名稱
+
+- **使用時機**：
+  - 保持所在目錄不變，替換最末端的完整檔案或資料夾名稱（同時更改主檔名與副檔名）。
+  - 在同一目錄下衍生出其他檔案名稱（如記錄檔、暫存檔或同名設定檔）。
+- **語法**：`new_path = path.with_name(name)`
+- **參數說明**：
+  - `name` (`str`)：全新的完整檔案名稱（例如 `"config.yaml"` 或 `"backup.zip"`）。不得為空字串，且不得包含路徑分隔符號（如 `/` 或 `\`），否則拋出 `ValueError`。
+- **回傳值**：`Path` 物件。
+
+> **注意事項**：
+> 1. 若原始路徑為磁碟根目錄（如 `Path("/")` 或 `Path("C:/")`），因為缺少末端檔名（`name` 為空），呼叫 `with_name()` 會拋出 `ValueError: Path('/') has an empty name`。
+> 2. 此方法同樣為純記憶體運算，不會更動硬碟上的實體檔案名稱。
+
+```python
+from pathlib import Path
+
+p = Path("/app/services/worker.py")
+
+# 1. 替換完整檔名
+log_file = p.with_name("worker.log")
+print(log_file)  # 輸出: /app/services/worker.log
+
+# 2. 替換為全新副檔名與名稱
+readme_file = p.with_name("README.md")
+print(readme_file)  # 輸出: /app/services/README.md
+
+# 3. 錯誤示範：包含路徑分隔符將拋出 ValueError
+try:
+    p.with_name("sub/other.py")
+except ValueError as e:
+    print(f"錯誤捕捉: {e}")  # 輸出: Invalid name 'sub/other.py'
+```
+
+---
+
+##### Path.with_stem() 替換主體檔案名稱 (Python 3.9+)
+
+- **使用時機**：
+  - 保留既有副檔名不變，僅替換檔案的主體名稱（Stem）。
+  - 為檔名批量增加前綴、後綴或時間戳記，而無需重新手動拼接副檔名。
+- **語法**：`new_path = path.with_stem(stem)`
+- **參數說明**：
+  - `stem` (`str`)：新主體檔名（例如 `"data_v2"` 或 `"output_2026"`）。不得包含路徑分隔符號。
+- **回傳值**：`Path` 物件。
+
+> **注意事項**：
+> 1. 此方法為 **Python 3.9 新增功能**。在 Python 3.8 或更早版本中，可使用 `p.with_name(f"{new_stem}{p.suffix}")` 達到相同效果。
+> 2. 對於多重副檔名（如 `archive.tar.gz`），其 `stem` 定義為去除最後一個副檔名後的字串（即 `archive.tar`），因此 `p.with_stem("backup")` 的結果為 `backup.gz`。
+
+```python
+from pathlib import Path
+
+p = Path("/data/exports/sales_2025.xlsx")
+
+# 1. 僅變更主檔名，自動保留原副檔名 (.xlsx)
+new_p = p.with_stem("sales_2026")
+print(new_p)  # 輸出: /data/exports/sales_2026.xlsx
+
+# 2. 批量加後綴標記實戰
+timestamp = "20260919"
+backup_p = p.with_stem(f"{p.stem}_{timestamp}")
+print(backup_p)  # 輸出: /data/exports/sales_2025_20260919.xlsx
+
+# 3. Python 3.8 及更早版本的向下相容寫法
+old_python_compat = p.with_name(f"sales_2026{p.suffix}")
+print(old_python_compat)  # 輸出: /data/exports/sales_2026.xlsx
+```
+
+---
+
+### Path 衍生修改方法行為對比
+
+以路徑範例 `p = Path("/data/monthly_report.tar.gz")` 進行綜合比對：
+
+| 衍生方法呼叫 | 衍生結果路徑 | 作用說明 |
+| :--- | :--- | :--- |
+| `p.with_suffix(".zip")` | `/data/monthly_report.tar.zip` | 替換最末端的一個副檔名 |
+| `p.with_suffix("")` | `/data/monthly_report.tar` | 移除最末端的副檔名 |
+| `p.with_name("summary.xlsx")` | `/data/summary.xlsx` | 替換末端完整檔案名稱（主體與副檔名皆變更） |
+| `p.with_stem("annual_report")` | `/data/annual_report.gz` | 替換主體檔名，保留原副檔名（Python 3.9+） |
+
+> **核心記憶法則**：
+> - `with_suffix()`：改**尾巴**（副檔名，必須以 `.` 開頭）。
+> - `with_stem()`：改**身體**（主檔名，保留副檔名）。
+> - `with_name()`：換**整顆**（身體加尾巴全部換掉）。
+> - 以上三者均為**純記憶體計算**，均回傳**全新 `Path` 物件**，原物件與硬碟檔案完全不受影響。
 
 ---
 
