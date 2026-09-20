@@ -151,6 +151,9 @@ print(f"轉換後字串: {s} | 型別: {type(s)}")  # 輸出: ... | 型別: <cla
 | **[[#Path.cwd() 取得當前工作目錄\|Path.cwd()]]** | 類別方法 | **獲取目前工作目錄絕對路徑** | 確認程式執行起點（等同於 `os.getcwd()`） |
 | **[[#Path.home() 取得使用者家目錄\|Path.home()]]** | 類別方法 | **獲取當前使用者家目錄絕對路徑** | 存取個人檔案夾（等同於 `os.path.expanduser("~")`） |
 | **[[#Path.expanduser() 展開波浪號 ~ 為家目錄絕對路徑\|Path.expanduser()]]** | 物件方法 | **展開路徑中的波浪號 (`~`) 為絕對路徑** | 讀取含 `~` 的使用者設定檔（防範 FileNotFoundError） |
+| **[[#Path.resolve() 解析絕對路徑與消除符號連結\|Path.resolve()]]** | 物件方法 | **解析規範化實體絕對路徑 (消除符號連結與 `..`)** | 消除相對路徑歧義、鎖定真實實體門牌、防禦路徑安全 |
+| **[[#Path.as_posix() 與 Path.as_uri() 路徑字串與 URI 格式轉換\|p.as_posix()]]** | 物件方法 | **將路徑轉換為 POSIX 正斜線字串** | Windows 反斜線轉標準正斜線、資料庫儲存、JSON 序列化 |
+| **[[#Path.as_posix() 與 Path.as_uri() 路徑字串與 URI 格式轉換\|p.as_uri()]]** | 物件方法 | **將絕對路徑轉換為 file:/// 本地 URI 格式** | 產生瀏覽器或 Markdown 可點擊的本機超連結 |
 | **[[#/ 跨平台路徑拼接運算子\|/ (斜線運算子)]]** | 運算子 | **直觀進行跨平台安全路徑拼接** | 組合目錄與檔名（完全取代繁瑣的 `os.path.join`） |
 | **[[#Path.joinpath() 多路徑片段方法拼接\|p.joinpath()]]** | 物件方法 | **以方法方式拼接多個路徑片段** | 支援串列/元組解包傳入（`*parts`，與 `/` 底層等價） |
 | **[[#Path.name 完整檔案或目錄名稱\|p.name]]** | 屬性 (`str`) | **取得完整檔案或目錄名稱** | 提取路徑最尾端的完整檔名（包含副檔名） |
@@ -163,26 +166,39 @@ print(f"轉換後字串: {s} | 型別: {type(s)}")  # 輸出: ... | 型別: <cla
 | **[[#Path.parent 直接上一層父目錄\|p.parent]]** | 屬性 (`Path`) | **取得直接上一層父目錄物件** | 往上找上一層目錄、建立同目錄下的其他檔案 |
 | **[[#Path.parents 所有祖先目錄序列\|p.parents]]** | 屬性 (序列) | **取得所有祖先層級目錄序列** | 依索引 `[0]`, `[1]` 向上回溯專案根目錄 |
 | **[[#Path.parts 路徑切分元組\|p.parts]]** | 屬性 (`tuple[str]`) | **取得所有路徑片段切分元組** | 檢查路徑是否包含特定層級名稱（如 `"temp" in p.parts`） |
+| **[[#Path.relative_to() 計算相對於基底目錄的相對路徑\|p.relative_to()]]** | 物件方法 | **計算相對於基底路徑的相對子路徑** | 封裝存檔時去除絕對前綴、產生相對超連結 |
 | **[[#Path.anchor 磁碟機根標籤\|p.anchor]]** | 屬性 (`str`) | **取得磁碟根節點標籤** | 檢查 Unix 根目錄 (`/`) 或 Windows 磁碟區 (`C:\`) |
 | **[[#Path.drive 與 Path.root 磁碟代號與根標籤\|p.drive]]** | 屬性 (`str`) | **取得 Windows 磁碟機代號** | 判斷 Windows 磁區（如 `'C:'`，Unix 下為空字串 `""`） |
 | **[[#Path.drive 與 Path.root 磁碟代號與根標籤\|p.root]]** | 屬性 (`str`) | **取得根目錄斜線標誌** | 提取根路徑符號（Unix 為 `'/'`，Windows 為 `'\\'`） |
 | **[[#Path.exists() 檢查路徑是否存在\|p.exists()]]** | 物件方法 | **檢查路徑指向的檔案/資料夾是否存在** | 讀寫前進行防禦性檢查 |
 | **[[#Path.is_file() 與 Path.is_dir() 類型檢查\|p.is_file()]]** | 物件方法 | **檢查路徑是否為常規檔案** | 走訪目錄時過濾掉資料夾 |
 | **[[#Path.is_file() 與 Path.is_dir() 類型檢查\|p.is_dir()]]** | 物件方法 | **檢查路徑是否為資料夾目錄** | 遍歷目錄時過濾掉一般檔案 |
+| **[[#Path.is_symlink() 符號連結檢查\|p.is_symlink()]]** | 物件方法 | **檢查路徑是否為捷徑 / 符號連結** | 避免目錄遞迴檢索時陷入死循環 |
 | **[[#Path.is_absolute() 絕對路徑檢查\|p.is_absolute()]]** | 物件方法 | **檢查路徑是否為絕對路徑** | 驗證輸入路徑是否為完整根路徑 |
+| **[[#Path.is_relative_to() 相對路徑從屬安全檢查 (Python 3.9+)\|p.is_relative_to()]]** | 物件方法 | **安全檢查路徑是否在指定目錄之內 (回傳布林值)** | 防範目錄穿越攻擊 (Path Traversal)、安全呼叫 relative_to |
+| **[[#Path.samefile() 實體檔案同一性檢查\|p.samefile()]]** | 物件方法 | **檢查兩路徑是否指向硬碟上同一個實體檔案** | 比對相對路徑與絕對路徑、識別符號連結目標 |
+| **[[#Path.match() 純字串萬用字元規則匹配\|p.match()]]** | 物件方法 | **在記憶體中快速匹配 Glob 萬用字元規則** | 零 I/O 高效過濾路徑規則（如 `*.py`） |
 | **[[#Path.stat() 取得詳細中繼資料\|p.stat()]]** | 物件方法 | **取得檔案大小 (Bytes) 與時間戳等中繼資料** | 檢查檔案大小 (`st_size`) 與修改時間 (`st_mtime`) |
 | **[[#Path.read_text() 與 Path.write_text() 純文字讀寫\|p.read_text()]]** | 物件方法 | **一鍵讀取純文字內容為字串** | 免手動 open/close，極速讀取 `.txt`、`.md`、`.json` |
 | **[[#Path.read_text() 與 Path.write_text() 純文字讀寫\|p.write_text()]]** | 物件方法 | **一鍵將字串寫入檔案 (自動覆寫/建立)** | 一鍵保存文字日誌與設定檔 |
 | **[[#Path.read_bytes() 與 Path.write_bytes() 二進位讀寫\|p.read_bytes()]]** | 物件方法 | **一鍵讀取二進位資料為 bytes** | 讀取圖片、音訊、二進位模型檔 |
 | **[[#Path.read_bytes() 與 Path.write_bytes() 二進位讀寫\|p.write_bytes()]]** | 物件方法 | **一鍵將 bytes 資料寫入檔案** | 儲存圖片、下載二進位檔案 |
+| **[[#Path.touch() 建立空檔案與更新時間戳\|p.touch()]]** | 物件方法 | **極速建立空白檔案或更新時間戳 (atime/mtime)** | 初始化 `.gitkeep`、旗標檔、記錄存取時間 |
+| **[[#Path.open() 原生檔案物件開啟\|p.open()]]** | 物件方法 | **開啟檔案原生串流物件 (支援上下文管理器)** | 逐行迭代讀取數百 MB 以上的超大檔案 |
 | **[[#Path.mkdir() 建立資料夾目錄\|p.mkdir()]]** | 物件方法 | **建立資料夾目錄 (支援 parents/exist_ok)** | 初始化專案目錄結構 |
 | **[[#Path.parent.mkdir() 防崩潰父目錄預建模式\|p.parent.mkdir()]]** | 語法模式 | **先確保父層資料夾存在再寫入檔案** | 防止深層目錄不存在引發 FileNotFoundError 崩潰 |
 | **[[#Path.rename() 重新命名與移動\|p.rename()]]** | 物件方法 | **重新命名或移動檔案至新路徑** | 檔案整理、重命名歸檔 |
+| **[[#Path.replace() 跨平台原子性覆蓋與重新命名\|p.replace()]]** | 物件方法 | **原子性重命名並強制覆蓋已存在的目標檔案** | 跨平台無痛覆蓋（徹底解決 Windows 下 rename 報錯問題） |
+| **[[#Path.chmod() 檔案權限模式變更\|p.chmod()]]** | 物件方法 | **變更檔案或目錄存取權限模式** | 設定檔案唯讀 (0o444)、可執行 (0o755) 或私密 (0o600) |
 | **[[#Path.unlink() 與 Path.rmdir() 刪除檔案與空目錄\|p.unlink()]]** | 物件方法 | **刪除指定檔案 (支援 missing_ok=True)** | 清理暫存檔、快取清除 |
 | **[[#Path.unlink() 與 Path.rmdir() 刪除檔案與空目錄\|p.rmdir()]]** | 物件方法 | **刪除指定的空資料夾目錄** | 移除空目錄 |
+| **[[#Path.symlink_to()、Path.hardlink_to() 與 Path.readlink() 連結建立與解析\|p.symlink_to()]]** | 物件方法 | **建立指向目標實體的捷徑 / 符號連結** | 虛擬環境指向、多版本檔案軟連結 |
+| **[[#Path.symlink_to()、Path.hardlink_to() 與 Path.readlink() 連結建立與解析\|p.hardlink_to()]]** | 物件方法 | **建立指向同 inode 的實體硬連結 (Python 3.10+)** | 免複製佔用空間之硬連結建立 |
+| **[[#Path.symlink_to()、Path.hardlink_to() 與 Path.readlink() 連結建立與解析\|p.readlink()]]** | 物件方法 | **讀取符號連結指向的目標路徑 (Python 3.9+)** | 檢查軟連結指向目標 |
 | **[[#Path.iterdir() 單層目錄遍歷\|p.iterdir()]]** | 物件方法 | **單層遍歷目錄下的所有子項目 (Path 迭代器)** | 掃描當前資料夾內的檔案與目錄 |
 | **[[#Path.glob() 單層萬用字元檢索\|p.glob()]]** | 物件方法 | **單層萬用字元匹配搜尋 (回傳 Path 產生器)** | 搜尋當前層特定副檔名檔案（如 `*.py`） |
 | **[[#Path.rglob() 全專案遞迴搜尋\|p.rglob()]]** | 物件方法 | **全專案深層遞迴萬用字元檢索 (Path 產生器)** | 遞迴搜尋所有子目錄深處的特定檔案 |
+| **[[#Path.walk() 全功能目錄樹走訪 (Python 3.12+)\|p.walk()]]** | 物件方法 | **產出 Path 物件的全功能目錄樹遍歷 (Python 3.12+)** | 完整取代 `os.walk()`，支援動態修剪子目錄與由底向上走訪 |
 
 ---
 
@@ -305,6 +321,82 @@ print(log_path)
 > **💡 `.joinpath()` vs `/` 運算子如何選擇？**  
 > - 已知固定路徑拼接 ➔ 首選 **`/` 斜線運算子**（如 `base / "logs" / "app.log"`，最直觀乾淨）。  
 > - 動態路徑清單拼接 ➔ 首選 **`.joinpath(*list_of_dirs)`**（免寫迴圈或 `reduce`，一鍵解包組合）。
+
+---
+
+##### Path.resolve() 解析絕對路徑與消除符號連結
+
+- **使用時機**：
+  - 將相對路徑（含 `.` 與 `..`）轉換為標準乾淨的**實體絕對路徑**。
+  - **自動追蹤並消除「捷徑 / 符號連結 (Symlinks)」**，解析出硬碟上真正指向的底層實體檔案。
+  - 進行安全性路徑檢查、消除使用者輸入路徑的歧義性。
+- **語法**：`real_abs_path = path_obj.resolve(strict=False)`
+- **參數說明**：
+  - `strict` (`bool`)：
+    - `False`（預設）：即使檔案或資料夾在硬碟中不存在，也會依據邏輯推導出規範化後的絕對路徑，不拋出異常。
+    - `True`：若該路徑在硬碟中真實不存在，將拋出 `FileNotFoundError`。
+- **回傳值**：
+  - `Path`：解析且消除符號連結後的全新實體絕對路徑物件。
+
+```python
+from pathlib import Path
+
+# 1. 自動消除相對路徑中的 .. 與 .
+dirty_path = Path("./src/../docs/./readme.md")
+clean_path = dirty_path.resolve()
+print(clean_path)  # 輸出例如: /Users/matthew/projects/my_app/docs/readme.md
+
+# 2. strict 參數控制 (路徑不存在時的行為)
+not_exist = Path("does_not_exist.txt")
+print(not_exist.resolve())  # 預設正常解析出絕對路徑，不崩潰
+
+try:
+    not_exist.resolve(strict=True)
+except FileNotFoundError:
+    print("嚴格模式下：檔案不存在直接拋出 FileNotFoundError！")
+```
+
+> **.resolve() vs .absolute() 關鍵差異**：  
+> - `.absolute()`：僅單純將當前工作目錄與路徑文字拼接，**不解析符號連結**，也**不一定會完整計算消除 `..`**。  
+> - `.resolve()`：**真正訪問作業系統底層**，將所有的符號連結還原為真實檔案，並將所有的 `..` 計算完畢，是取得真實唯一路徑的**黃金標準**！
+
+---
+
+##### Path.as_posix() 與 Path.as_uri() 路徑字串與 URI 格式轉換
+
+- **使用時機**：
+  - `as_posix()`：將路徑轉為以標準正斜線 `/` 分隔的字串。在 Windows 開發中，將包含反斜線 `\` 的路徑存入資料庫、跨平台傳輸、或序列化為 JSON 時，呼叫此方法可統一斜線格式。
+  - `as_uri()`：將實體絕對路徑轉換為標準 `file:///` 本地協議 URI 字串，用於生成瀏覽器、HTML 或 Markdown 可點擊的本機超連結。
+- **語法**：
+  - `posix_str = path_obj.as_posix()`
+  - `uri_str = path_obj.as_uri()`
+- **參數說明**：無參數。
+- **回傳值**：
+  - `as_posix()` ➔ `str`：使用 `/` 分隔的路徑字串。
+  - `as_uri()` ➔ `str`：標準檔案協議 URI 字串。
+
+> **注意事項**：
+> `as_uri()` **必須在絕對路徑上呼叫**。若對相對路徑呼叫，會直接拋出 `ValueError: relative path can't be expressed as a file URI`。建議呼叫前先以 `.resolve()` 確保路徑為絕對路徑。
+
+```python
+from pathlib import Path
+
+# 1. as_posix(): Windows 反斜線統一轉為標準正斜線
+win_path = Path(r"C:\Users\matthew\projects\app\data.csv")
+print(win_path.as_posix())  # 輸出: C:/Users/matthew/projects/app/data.csv
+
+# 2. as_uri(): 轉換為標準 file:/// 本地 URI 格式
+abs_path = Path("/Users/matthew/Documents/report.pdf")
+print(abs_path.as_uri())    # 輸出: file:///Users/matthew/Documents/report.pdf
+
+# 3. 相對路徑陷阱防禦 (需先轉為絕對路徑再呼叫 as_uri)
+rel_path = Path("docs/readme.md")
+try:
+    rel_path.as_uri()
+except ValueError as e:
+    print(f"錯誤捕捉: {e}")  # relative path can't be expressed as a file URI
+    print("正確解法:", rel_path.resolve().as_uri())
+```
 
 ---
 
@@ -601,6 +693,45 @@ if "temp" in p.parts:
 
 ---
 
+##### Path.relative_to() 計算相對於基底目錄的相對路徑
+
+- **使用時機**：
+  - 計算路徑相對於指定「基底目錄（Base Path）」的相對路徑片段。
+  - 常見於：日誌簡化輸出、跨平台打包封裝、去除冗長的系統絕對路徑前綴、建立相對 Markdown/HTML 連結。
+- **語法**：`rel_path = path_obj.relative_to(other_path, walk_up=False)`
+- **參數說明**：
+  - `other_path`：作為基準的父目錄路徑（支援字串或 `Path` 物件）。
+  - `walk_up` (`bool`，**Python 3.12+ 新增**)：
+    - `False`（預設）：若目標路徑不在 `other_path` 的下層目錄內，會拋出 `ValueError`。
+    - `True`：允許向上回溯，自動使用 `..` 片段計算出兩者的相對關係。
+- **回傳值**：`Path`：計算出的相對路徑物件。
+
+```python
+from pathlib import Path
+
+full_path = Path("/Users/matthew/projects/my_app/src/utils/helper.py")
+base_dir = Path("/Users/matthew/projects/my_app")
+
+# 1. 正常計算下層相對路徑
+rel = full_path.relative_to(base_dir)
+print(rel)  # 輸出: src/utils/helper.py
+
+# 2. 陷阱：若非下層目錄，預設會拋出 ValueError
+other_dir = Path("/Users/matthew/documents")
+try:
+    print(full_path.relative_to(other_dir))
+except ValueError as e:
+    print("錯誤：目標不在指定基準目錄之下！")
+
+# 3. Python 3.12+ 支援 walk_up=True (允許用 .. 向上回溯)
+# rel_with_dots = full_path.relative_to(other_dir, walk_up=True)
+# print(rel_with_dots)  # 輸出: ../projects/my_app/src/utils/helper.py
+```
+
+> **防禦天條**：在呼叫 `.relative_to()` 前，若不確定目標是否為其子目錄，在 Python 3.9+ 請務必先以 **`.is_relative_to()`** 進行布林值安全檢查，避免程式崩潰！
+
+---
+
 ##### Path.anchor 磁碟機根標籤
 
 - **使用時機**：取得路徑開頭的磁碟機根節點標籤（Unix 系統為 `'/'`，Windows 為 `'C:\'`）。
@@ -683,6 +814,140 @@ print(Path("src/main.py").is_absolute()) # False
 
 ---
 
+##### Path.is_relative_to() 相對路徑從屬安全檢查 (Python 3.9+)
+
+- **使用時機**：
+  - 安全檢查某路徑是否在指定父目錄之下（回傳布林值，不拋出異常）。
+  - 資安防禦：後端處理使用者上傳檔案、檔案下載介面時，徹底防範目錄穿越攻擊（Path Traversal / `../` 漏洞）。
+  - 呼叫 `path_obj.relative_to()` 前的最佳前置保護措施。
+- **語法**：`is_child = path_obj.is_relative_to(other_path)`
+- **參數說明**：
+  - `other_path`：作為基準的父目錄路徑（支援字串或 `Path` 物件）。
+- **回傳值**：`bool`（若路徑相對於 `other_path` 屬於子路徑則回傳 `True`，否則回傳 `False`）。
+- **版本需求**：Python 3.9+。
+
+> **注意事項：安全邊界檢查規範**：
+> 1. `is_relative_to()` 僅做純路徑結構比對，不會自動解析符號連結或消除包含的 `..`。處理不可信的使用者輸入時，**務必先呼叫 `.resolve()` 解析為實體絕對路徑**，再以 `is_relative_to()` 進行邊界檢查。
+> 2. 相對於 `.relative_to()` 在目標不在目錄內時直接拋出 `ValueError`，`is_relative_to()` 純粹回傳 `True` 或 `False`，適合用於條件判斷與過濾器。
+
+```python
+from pathlib import Path
+
+base_dir = Path("/var/data/uploads")
+user_safe_file = Path("/var/data/uploads/2026/avatar.png")
+malicious_file = Path("/var/data/uploads/../../etc/passwd")
+
+# 1. 基礎從屬檢查
+print(user_safe_file.is_relative_to(base_dir))          # 輸出: True
+print(Path("/var/log/sys.log").is_relative_to(base_dir)) # 輸出: False
+
+# 2. 實戰：防範目錄穿越攻擊 (Path Traversal 防禦典範)
+# 先透過 .resolve() 消除惡意使用者夾帶的 ..，再以 is_relative_to 進行邊界檢查
+clean_path = malicious_file.resolve()
+if clean_path.is_relative_to(base_dir.resolve()):
+    print("安全：路徑位於合法目錄內")
+else:
+    print("警報：偵測到非法目錄穿越攻擊！已攔截存取！")
+
+# 3. 舊版本向下相容 (Python 3.8 或更早版本替代寫法)
+def safe_is_relative_to(child_path: Path, parent_path: Path) -> bool:
+    try:
+        child_path.relative_to(parent_path)
+        return True
+    except ValueError:
+        return False
+```
+
+> **.is_relative_to() vs .relative_to() 對比**：
+> - `.relative_to()`：當目標不在該目錄下時會直接拋出 `ValueError`，適合「確定在目錄內且需要取得相對路徑片段」時使用。
+> - `.is_relative_to()`：純回傳 `True`/`False`，絕不拋出異常，適合「條件判斷、權限校驗與安全過濾」。
+
+---
+
+##### Path.is_symlink() 符號連結檢查
+
+- **使用時機**：
+  - 檢查路徑是否為作業系統的**符號連結（Symbolic Link / 軟連結 / 捷徑）**。
+  - 在深層遞迴掃描目錄時，**避免陷入符號連結互相指向導致的「死循環（Infinite Loop）」**。
+  - 安全備份工具判斷是否需要只複製捷徑或複製實體內容。
+- **語法**：`is_link = path_obj.is_symlink()`
+- **回傳值**：`bool`。
+
+```python
+from pathlib import Path
+
+p = Path("latest_model.onnx")
+
+if p.is_symlink():
+    print("🔗 這是一個符號連結！")
+    # 取得符號連結真正指向的底層實體路徑：
+    print("真實目標：", p.resolve())
+else:
+    print("📄 這是真實的一般檔案或目錄。")
+```
+
+> **💡 關鍵陷阱**：若 `p` 是一個指向常規檔案的符號連結：  
+> - `p.is_symlink()` 為 `True`。  
+> - `p.is_file()` 也是 `True`（因為 `pathlib` 預設會自動追蹤連結至底層目標）！  
+> 若需要嚴格排他性判定「是否為純實體檔案」，應寫為：`p.is_file() and not p.is_symlink()`。
+
+---
+
+##### Path.samefile() 實體檔案同一性檢查
+
+- **使用時機**：
+  - 檢查兩個寫法不同的路徑（例如一個是相對路徑、一個是絕對路徑，或是包含符號連結）在硬碟底層是否指向**完全相同的同一個實體檔案（比對 OS Device 與 Inode）**。
+  - 等同於傳統的 `os.path.samefile()`。
+- **語法**：`is_same = path_obj.samefile(other_path)`
+- **參數說明**：
+  - `other_path`：另一個比對路徑（字串或 `Path` 物件）。
+- **回傳值**：`bool`。
+- **拋出異常**：若兩者中有任何一個檔案在硬碟中真實不存在，將拋出 `FileNotFoundError`。
+
+```python
+from pathlib import Path
+
+p1 = Path("./main.py")
+p2 = Path.cwd() / "main.py"
+p3 = Path("temp/../main.py")
+
+# 雖然三個 Path 物件的字串表現形式各不相同，但指向同一個硬碟檔案：
+print(p1 == p2)            # False (純物件字串比對不相等)
+print(p1.samefile(p2))     # True  (底層實體比對，同一檔案！)
+print(p1.samefile(p3))     # True  (自動計算並比對硬碟實體)
+```
+
+---
+
+##### Path.match() 純字串萬用字元規則匹配
+
+- **使用時機**：
+  - 記憶體中極速比對路徑是否符合 Glob 萬用字元樣式（Pattern）。
+  - **零磁碟 I/O 開銷**：不需要硬碟真實存在該檔案，純以路徑層級與名稱字串進行高效樣式比對。
+  - 適合在大量記憶體清單中過濾特定後綴或特定目錄結構下的檔案。
+- **語法**：`is_matched = path_obj.match(pattern)`
+- **參數說明**：
+  - `pattern` (`str`)：萬用字元規則（如 `*.py`、`tests/*.py`、`**/*.json`）。
+- **回傳值**：`bool`。
+
+```python
+from pathlib import Path
+
+p = Path("src/utils/test_helper.py")
+
+# 1. 檔名模式匹配
+print(p.match("*.py"))          # True
+print(p.match("test_*.py"))     # True
+print(p.match("*.json"))        # False
+
+# 2. 相對目錄層級匹配 (由右向左對齊)
+print(p.match("utils/*.py"))     # True
+print(p.match("src/*.py"))       # False (中間隔了 utils)
+print(p.match("**/*.py"))        # True  (跨任意目錄)
+```
+
+---
+
 ##### Path.stat() 取得詳細中繼資料
 
 - **使用時機**：取得檔案的詳細中繼資料結構體（包含檔案大小 `st_size`、最後修改時間 `st_mtime` 等，等同於 `os.stat()`）。
@@ -736,6 +1001,51 @@ from pathlib import Path
 # 讀取圖片並複製一份
 image_data = Path("photo.png").read_bytes()
 Path("photo_copy.png").write_bytes(image_data)
+```
+
+---
+
+##### Path.touch() 建立空檔案與更新時間戳
+
+- **使用時機**：
+  - 極速建立一個空白檔案（例如初始化 `.gitkeep`、旗標檔 `run.lock`）。
+  - 更新現有檔案的最後存取時間 (atime) 與修改時間 (mtime)，類似 Unix 系統的 `touch` 指令。
+- **語法**：`path_obj.touch(mode=0o666, exist_ok=True)`
+- **參數說明**：
+  - `mode` (`int`)：檔案存取權限遮罩（預設 `0o666`，八進位可讀寫）。
+  - `exist_ok` (`bool`)：
+    - `True`（預設）：若檔案已存在，不拋出錯誤，僅更新檔案時間戳記。
+    - `False`：若檔案已存在，直接拋出 `FileExistsError`。
+- **回傳值**：`None`。
+
+> **注意事項**：
+> 若檔案所在的父目錄尚不存在，呼叫 `touch()` 會拋出 `FileNotFoundError`。在建立深層空白檔案前，建議先執行 `p.parent.mkdir(parents=True, exist_ok=True)`。
+
+```python
+import time
+from pathlib import Path
+
+flag_file = Path("process.lock")
+
+# 1. 建立全新空白檔案 (若已存在則不報錯)
+flag_file.touch(exist_ok=True)
+print(f"檔案是否存在: {flag_file.exists()}, 大小: {flag_file.stat().st_size} Bytes")
+
+# 2. exist_ok=False 嚴格防重寫模式
+try:
+    flag_file.touch(exist_ok=False)
+except FileExistsError:
+    print("嚴格模式：檔案已存在，拒絕重複建立！")
+
+# 3. 更新時間戳示範
+old_mtime = flag_file.stat().st_mtime
+time.sleep(0.01)
+flag_file.touch()  # 更新 mtime
+new_mtime = flag_file.stat().st_mtime
+print(f"修改時間是否已更新: {new_mtime > old_mtime}")
+
+# 清理測試檔案
+flag_file.unlink(missing_ok=True)
 ```
 
 ---
@@ -811,6 +1121,44 @@ Path("new.txt").rename(dest_dir / "new.txt")
 
 ---
 
+##### Path.replace() 跨平台原子性覆蓋與重新命名
+
+- **使用時機**：
+  - 重新命名檔案或將檔案移動至新路徑，**並在目標檔案已存在時強制原子性覆蓋**。
+  - **跨平台一致性必備天條**：在 Unix (macOS / Linux) 上，`rename()` 若遇到目標檔案已存在會自動覆蓋；但**在 Windows 系統上，`rename()` 遇到目標檔案已存在會拋出 `FileExistsError` 崩潰**！
+  - 若需要跨平台安全執行「有則覆蓋、無則新建」的原子性重命名，**永遠使用 `replace()` 取代 `rename()`**。
+- **語法**：`new_path = path_obj.replace(target)`
+- **參數說明**：
+  - `target`：目標路徑（支援字串或 `Path` 物件）。
+- **回傳值**：指向目標路徑的全新 `Path` 物件。
+
+> **注意事項：原子操作 (Atomic Operation)**：
+> 在多數作業系統與檔案系統上，`replace()` 具備原子性保證。這意味著在覆蓋寫入期間，其他行程絕不會讀到「半寫入」的損壞檔案，要麼保留舊檔案，要麼完整替換為新檔案，常用於撰寫臨時快取置換邏輯。若目標為非空資料夾，則會拋出 `OSError`。
+
+```python
+from pathlib import Path
+
+src = Path("data_v2.json")
+dst = Path("data_current.json")
+
+# 準備測試資料
+src.write_text("全新資料內容", encoding="utf-8")
+dst.write_text("舊有資料內容", encoding="utf-8")
+
+# 在 Windows 上若使用 rename() 會拋出 FileExistsError！
+# 使用 replace() 無論在 Windows 還是 Unix 都能原子性強制覆蓋
+new_dest = src.replace(dst)
+
+print(f"新目標路徑: {new_dest}")
+print(f"覆蓋後的內容: {dst.read_text(encoding='utf-8')}")  # 輸出: 全新資料內容
+print(f"原檔案是否存在: {src.exists()}")                  # 輸出: False
+
+# 清理測試檔案
+dst.unlink(missing_ok=True)
+```
+
+---
+
 ##### Path.unlink() 與 Path.rmdir() 刪除檔案與空目錄
 
 - **使用時機**：
@@ -828,8 +1176,101 @@ if Path("empty_folder").exists():
     Path("empty_folder").rmdir()
 ```
 
-> **💡 如何遞迴刪除包含檔案的非空資料夾？**  
+> **如何遞迴刪除包含檔案的非空資料夾？**  
 > `pathlib` 不提供強制刪除非空目錄的方法。請使用標準庫 **`shutil.rmtree(Path("my_folder"))`** 進行安全遞迴刪除！
+
+---
+
+##### Path.chmod() 檔案權限模式變更
+
+- **使用時機**：
+  - 修改本機檔案或目錄的存取權限模式（Mode / Permission）。
+  - 將產生的腳本設定為可執行（`0o755`）、將敏感憑證與私鑰檔案設為僅擁有者可讀寫（`0o600`）、或將設定檔鎖定為唯讀（`0o444`）。
+- **語法**：`path_obj.chmod(mode, *, follow_symlinks=True)`
+- **參數說明**：
+  - `mode` (`int`)：八進位權限數值（如 `0o755`、`0o600`、`0o444`）。
+  - `follow_symlinks` (`bool`，預設 `True`)：若目標為符號連結，是否變更指向的目標實體。
+- **回傳值**：`None`。
+
+```python
+from pathlib import Path
+
+script_file = Path("deploy.sh")
+script_file.write_text("#!/bin/bash\necho '部署完成'", encoding="utf-8")
+
+# 1. 將腳本權限設為可執行 (rwxr-xr-x: 0o755)
+script_file.chmod(0o755)
+
+# 2. 透過 stat() 檢驗八進位權限遮罩
+current_mode = oct(script_file.stat().st_mode)
+print(f"目前檔案權限模式: {current_mode}")
+
+# 3. 設為唯讀保護 (r--r--r--: 0o444)
+script_file.chmod(0o444)
+
+# 清理測試檔案 (刪除前復原為可寫以防權限錯誤)
+script_file.chmod(0o666)
+script_file.unlink(missing_ok=True)
+```
+
+---
+
+##### Path.symlink_to()、Path.hardlink_to() 與 Path.readlink() 連結建立與解析
+
+- **使用時機**：
+  - `symlink_to()`：建立符號連結（Symbolic Link / 捷徑 / 軟連結），指向實體目標。
+  - `hardlink_to()` (Python 3.10+)：建立實體硬連結（Hard Link，指向相同底層 inode）。
+  - `readlink()` (Python 3.9+)：解析符號連結本身，回傳其直接指向的原始路徑物件。
+- **語法**：
+  - `link_path.symlink_to(target, target_is_directory=False)`
+  - `link_path.hardlink_to(target)`
+  - `target_path = link_path.readlink()`
+- **參數說明**：
+  - `target`：被指向的原始實體檔案或資料夾路徑。
+  - `target_is_directory` (`bool`)：在 Windows 系統上，若符號連結指向目標為資料夾，必須顯式指定為 `True`（Unix 系統會自動忽略）。
+- **回傳值**：
+  - `symlink_to()` / `hardlink_to()` ➔ `None`。
+  - `readlink()` ➔ `Path` 物件。
+
+> **注意事項**：
+> 1. 在 Windows 系統建立符號連結通常需要 Windows 開發者模式（Developer Mode）或以系統管理員身分執行，否則可能拋出 `PermissionError` 或 `OSError`。
+> 2. `readlink()` 僅回傳符號連結直接記錄的目標路徑，若要徹底遞迴解析出最終實體絕對路徑，請使用 `.resolve()`。
+
+```python
+from pathlib import Path
+
+# 準備目標實體檔案
+target_file = Path("core_v1.py")
+target_file.write_text("print('core v1')", encoding="utf-8")
+
+symlink = Path("core_latest.py")
+
+# 1. 建立符號連結 (軟連結)
+try:
+    symlink.symlink_to(target_file)
+    print(f"捷徑是否為符號連結: {symlink.is_symlink()}")  # 輸出: True
+
+    # 2. Python 3.9+ readlink() 讀取捷徑指向的目標
+    print(f"捷徑指向目標: {symlink.readlink()}")          # 輸出: core_v1.py
+
+    # 3. 透過捷徑直接讀取底層檔案內容
+    print(f"捷徑內容讀取: {symlink.read_text().strip()}")
+except OSError as e:
+    print(f"作業系統權限不足 (Windows 未開開發者模式): {e}")
+
+# 4. Python 3.10+ hardlink_to() 建立硬連結
+hardlink = Path("core_backup.py")
+try:
+    hardlink.hardlink_to(target_file)
+    print(f"硬連結建立成功，兩者指向同一檔案: {hardlink.samefile(target_file)}")
+except (OSError, AttributeError) as e:
+    print(f"硬連結建立略過: {e}")
+
+# 清理測試檔案
+symlink.unlink(missing_ok=True)
+hardlink.unlink(missing_ok=True)
+target_file.unlink(missing_ok=True)
+```
 
 ---
 
@@ -891,9 +1332,9 @@ for py_file in Path.cwd().glob("*.py"):
     print(f"找到程式碼: {py_file.name} (大小: {py_file.stat().st_size} Bytes)")
 ```
 
-> **💡 產生器 (Generator) 核心觀念**：  
+> **產生器 (Generator) 核心觀念**：  
 > - **極度省記憶體**：產生器不會一次把硬碟中所有檔案載入記憶體，而是動態即時計算產生下一個 `Path` 物件。  
-> - **⚠️ 產生器只能消耗一次**：一旦被 `for` 迴圈走過一遍就會變空。若需計算總數 `len()` 或重複遍歷，請先用 **`list(path.glob("*.py"))`** 轉為清單！
+> - **產生器只能消耗一次**：一旦被 `for` 迴圈走過一遍就會變空。若需計算總數 `len()` 或重複遍歷，請先用 **`list(path.glob("*.py"))`** 轉為清單！
 
 ---
 
@@ -908,6 +1349,51 @@ from pathlib import Path
 # 一行指令遞迴搜尋整個專案下所有的 .json 設定檔
 all_json = list(Path.cwd().rglob("*.json"))
 print(f"專案內總共包含 {len(all_json)} 個 JSON 設定檔！")
+```
+
+---
+
+##### Path.walk() 全功能目錄樹走訪 (Python 3.12+)
+
+- **使用時機**：
+  - 深度走訪目錄樹結構（全面取代傳統 `os.walk()`，原生產出 `Path` 物件）。
+  - 需要在遍歷過程中**動態略過特定目錄**（如排除 `.git`、`__pycache__`、`node_modules`）以大幅節省檢索時間。
+  - 需要由底向上（Bottom-up）走訪處理檔案與目錄（如清理刪除多層空資料夾）。
+- **語法**：`for root, dirs, files in path_obj.walk(top_down=True, on_error=None, follow_symlinks=False):`
+- **參數說明**：
+  - `top_down` (`bool`，預設 `True`)：
+    - `True`：由頂部根目錄向下走訪（允許在走訪期間原地修改 `dirs` 串列以略過特定子目錄）。
+    - `False`：由底部葉節點向上回溯走訪（適合用於由內而外刪除目錄內容）。
+  - `on_error` (`Callable`，預設 `None`)：自定義錯誤處理函式（例如遇到權限不足時的回呼）。
+  - `follow_symlinks` (`bool`，預設 `False`)：是否遞迴進入符號連結所指向的資料夾。
+- **回傳值**：產出三元組 `(root, dirs, files)` 的迭代器：
+  - `root` (`Path`)：當前走訪目錄的 `Path` 物件。
+  - `dirs` (`list[str]`)：當前目錄下所有子資料夾名稱清單。
+  - `files` (`list[str]`)：當前目錄下所有檔案名稱清單。
+- **版本需求**：Python 3.12+。
+
+> **注意事項：Path.walk() vs os.walk() 關鍵進化**：
+> 傳統 `os.walk()` 產出的 `root` 是純字串 `str`，在拼接路徑時必須呼叫 `os.path.join(root, file)`。而 `Path.walk()` 產出的 `root` 是標準的智慧 `Path` 物件，直接以斜線運算子 `root / file` 拼接，極致優雅且自動跨平台！
+
+```python
+from pathlib import Path
+
+project_root = Path.cwd()
+
+# 1. 基礎走訪與動態修剪目錄 (Pruning Directories)
+for root, dirs, files in project_root.walk(top_down=True):
+    # 原地修改 dirs 串列：略過版本控制與虛擬環境目錄，大幅提升掃描效能！
+    dirs[:] = [d for d in dirs if d not in {".git", ".venv", "__pycache__", "node_modules"}]
+    
+    for file in files:
+        if file.endswith(".py"):
+            py_path = root / file  # 直接以 / 拼接！
+            print(f"原始碼: {py_path.name} (位於: {root})")
+
+# 2. top_down=False 由底向上走訪 (適合遞迴清理與刪除)
+# for root, dirs, files in project_root.walk(top_down=False):
+#     if not dirs and not files:
+#         root.rmdir()  # 安全刪除由下至上的空資料夾
 ```
 
 ---
