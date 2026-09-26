@@ -64,6 +64,9 @@ Order(
 | **取得 JSON Schema** | `Model.schema()` | **`Model.model_json_schema()`** | 產出標準 OpenAPI / AI 相容 Schema |
 | **自訂欄位驗證器** | `@validator` | **`@field_validator`** | 語法更精準，支援 `mode='before'/'after'` |
 | **模型全域設定** | 內部 `class Config:` | **`model_config = ConfigDict(...)`** | 改用型別提示更友好的字典類別 |
+| **取得模型欄位字典** | `Model.__fields__` | **`Model.model_fields`** | 回傳 `dict[str, FieldInfo]`，包含型別標註與約束 |
+| **取得已明確賦值欄位** | `model.__fields_set__` | **`model.model_fields_set`** | 僅包含明確手動賦值的欄位名稱集合（用於局部更新） |
+| **複製模型物件** | `model.copy(update=...)` | **`model.model_copy(update=...)`** | 支援局部動態覆蓋更新與深拷貝 |
 
 ---
 
@@ -82,6 +85,11 @@ Order(
 | **[[#@field_validator() 單一欄位自訂校驗\|@field_validator()]]** | **自訂單一欄位的進階校驗規則** | 檢查密碼強度、校驗自訂格式、過濾非法字元 |
 | **[[#@model_validator() 跨欄位全模型聯合校驗\|@model_validator()]]** | **跨欄位聯合校驗或整體驗證** | 比對「密碼」與「確認密碼」是否一致 |
 | **[[#ConfigDict 模型全域設定\|ConfigDict]]** | **配置模型全域行為** | 禁止未知額外欄位 (`extra='forbid'`)、自動去除前後空白 |
+| **[[#Model.model_fields 類別欄位元數據字典\|Model.model_fields]]** | **獲取模型所有定義的欄位定義與約束 (FieldInfo)** | 動態選單生成、動態表單、架構反射與動態驗證 |
+| **[[#instance.model_fields_set 實例已賦值欄位集合\|instance.model_fields_set]]** | **獲取實例中明確被手動賦值的欄位名稱集合** | HTTP PATCH 局部更新、判斷欄位是否被主動指定 |
+| **[[#instance.model_extra 實例額外未知欄位字典\|instance.model_extra]]** | **獲取未在模型中定義但被傳入的額外欄位** | 搭配 `extra='allow'`，支援動態擴充屬性接收 |
+| **[[#Model.model_computed_fields 動態計算欄位字典\|Model.model_computed_fields]]** | **獲取使用 @computed_field 裝飾的計算欄位** | 檢查計算屬性定義與動態欄位計算結果 |
+| **[[#instance.model_copy() 實例複製與局部動態更新\|instance.model_copy()]]** | **複製模型實例，並支援覆蓋指定欄位內容** | 不可變物件安全更新、情境模擬與單元測試 |
 
 ---
 
@@ -519,6 +527,230 @@ print(f"第一組地址城市: {customer.addresses[0].city}")  # 輸出: 台北�
 
 ---
 
+## 5. 模型內省、反射與內容獲取 (Model Introspection)
+
+在軟體工程與 AI 開發中，除了單純透過 `model.model_dump()` 取得「資料數值」之外，我們經常需要**探索模型本身的結構、欄位定義、型別標註、邊界約束與元數據**（例如：動態產生表單、自動化 CLI 設定選單、自動生成說明文件、動態反射派發）。
+
+Pydantic V2 提供了一組專門用於**內省 (Introspection / Reflection)** 的核心屬性與方法：
+
+---
+
+##### Model.model_fields 類別欄位元數據字典
+
+- **使用時機**：需要動態取得模型中定義的所有欄位清單、各欄位的型別標註（Type Hints）、預設值、邊界約束（`ge`, `le`）以及中文說明（`description`）時使用。
+- **語法**：`Model.model_fields` 或 `type(instance).model_fields`
+- **回傳值**：
+  - `dict[str, FieldInfo]`：以「欄位屬性名稱」為 Key，對應的 `FieldInfo` 元數據物件為 Value 的字典。
+- **FieldInfo 核心元數據屬性解構**：
+
+| 屬性名稱 | 型別 | 說明與典型用途 |
+| :--- | :--- | :--- |
+| **`annotation`** | `Any` | 欄位的型別標註（如 `str`、`int`、`Literal["A", "B"]`）。可用於動態型別檢查與分流。 |
+| **`default`** | `Any` | 靜態預設值。若該欄位沒有設定預設值，值為 `PydanticUndefined`。 |
+| **`default_factory`** | `Callable \| None` | 動態工廠函式（如 `list`、`datetime.now`）。若未設定則為 `None`。 |
+| **`description`** | `str \| None` | 在 `Field(description="...")` 中宣告的文字說明。常用於動態 UI/CLI 標籤。 |
+| **`metadata`** | `list[Any]` | 包含邊界約束物件的列表（如 `Gt`, `Ge`, `Lt`, `Le`, `MinLen` 等）。 |
+| **`is_required()`** | `bool` | 函式方法。回傳該欄位是否為必填（無預設值且無預設工廠時為 `True`）。 |
+
+> **⚠️ 核心天條：永遠從類別存取 `model_fields`，切勿從實例存取**  
+> - **推薦寫法**：`Model.model_fields` 或 `type(instance).model_fields`  
+> - **棄用寫法**：`instance.model_fields`（在 Pydantic 2.11+ 會觸發 `DeprecationWarning`，未來版本將禁止直接存取實例屬性）。
+
+```python
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class ServerConfig(BaseModel):
+    """ 伺服器連線配置 """
+    host: str = Field(default="127.0.0.1", description="主機位址")
+    port: int = Field(default=8000, ge=1, le=65535, description="通訊埠 (1~65535)")
+    mode: Literal["debug", "release"] = Field(default="debug", description="運行模式")
+
+# 1. 透過類別取得 model_fields 字典
+fields_dict = ServerConfig.model_fields
+
+for name, info in fields_dict.items():
+    print(f"欄位: {name}")
+    print(f"  型別標註: {info.annotation}")
+    print(f"  說明描述: {info.description}")
+    print(f"  預設值: {info.default}")
+    print(f"  是否必填: {info.is_required()}")
+```
+
+---
+
+##### instance.model_fields_set 實例已賦值欄位集合
+
+- **使用時機**：判斷哪些欄位是在**物件初始化時由使用者「明確手動傳入」的**，哪些欄位純粹只是「吃了預設值」。
+- **語法**：`instance.model_fields_set`
+- **回傳值**：
+  - `set[str]`：包含所有被手動賦值的欄位名稱集合（字串 Set）。
+- **關鍵細節**：
+  - 即使手動傳入的值「剛好等於預設值」，Pydantic 也會將它記錄在 `model_fields_set` 中！
+  - 它是 `model_dump(exclude_unset=True)` 底層的核心依據，是實現 **HTTP PATCH（局部更新）** 判定使用者意圖的利器。
+
+```python
+from pydantic import BaseModel, Field
+
+class Task(BaseModel):
+    title: str
+    priority: int = 1
+    completed: bool = False
+
+# 案例 1：只傳入必填的 title
+t1 = Task(title="撰寫文件")
+print(t1.model_fields_set)
+# 輸出: {'title'}（priority 與 completed 均不在集合內）
+
+# 案例 2：明確手動傳入 priority=1（即使剛好等於預設值 1）
+t2 = Task(title="修復錯誤", priority=1)
+print(t2.model_fields_set)
+# 輸出: {'title', 'priority'}（明確傳入者即被記錄）
+
+# 典型應用：只更新使用者明確有給的欄位 (PATCH 更新)
+patch_payload = t2.model_dump(include=t2.model_fields_set)
+print(patch_payload)
+# 輸出: {'title': '修復錯誤', 'priority': 1}
+```
+
+---
+
+##### instance.model_extra 實例額外未知欄位字典
+
+- **使用時機**：當模型配置了 `model_config = ConfigDict(extra='allow')` 時，獲取使用者傳入但「未在模型中明確定義」的所有額外欄位。
+- **語法**：`instance.model_extra`
+- **回傳值**：
+  - `dict[str, Any] | None`：若配置了 `extra='allow'` 且有未知欄位傳入，回傳額外鍵值字典；若無多餘欄位或配置為 `extra='ignore'`，回傳 `None`。
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+class FlexiblePlugin(BaseModel):
+    model_config = ConfigDict(extra="allow")  # 允許接收未知欄位
+
+    plugin_name: str
+    version: str = "1.0.0"
+
+# 初始化時傳入未定義的 author 與 website
+plugin = FlexiblePlugin(
+    plugin_name="MarkdownViewer",
+    author="Matthew",
+    website="https://example.com"
+)
+
+print(plugin.plugin_name)    # 正常存取宣告欄位
+print(plugin.model_extra)    # 輸出: {'author': 'Matthew', 'website': 'https://example.com'}
+```
+
+---
+
+##### Model.model_computed_fields 動態計算欄位字典
+
+- **使用時機**：獲取模型中使用 `@computed_field` 裝飾的動態計算屬性元數據字典。
+- **語法**：`Model.model_computed_fields`
+- **回傳值**：
+  - `dict[str, ComputedFieldInfo]`：以計算欄位名稱為 Key，對應的計算元數據為 Value。
+
+```python
+from pydantic import BaseModel, computed_field
+
+class Rectangle(BaseModel):
+    width: float
+    height: float
+
+    @computed_field
+    @property
+    def area(self) -> float:
+        """ 動態計算面積 """
+        return self.width * self.height
+
+# 1. 內省計算欄位元數據
+print(Rectangle.model_computed_fields.keys())
+# 輸出: dict_keys(['area'])
+
+# 2. 計算欄位會自動被包含在 model_dump() 與 model_dump_json() 中
+rect = Rectangle(width=10, height=5)
+print(rect.model_dump())
+# 輸出: {'width': 10.0, 'height': 5.0, 'area': 50.0}
+```
+
+---
+
+##### instance.model_copy() 實例複製與局部動態更新
+
+- **使用時機**：在不改變原有物件的前提下（保持不可變性），快速複製出一個新實例，並動態覆蓋指定欄位內容。
+- **語法**：`new_instance = instance.model_copy(update={"欄位": 新值}, deep=True)`
+- **參數說明**：
+  - `update` (`dict[str, Any]`，選填)：欲動態覆蓋替換的屬性字典。
+  - `deep` (`bool`，預設 `False`)：是否進行深拷貝（Deep Copy），避免巢狀子物件共享引用。
+- **回傳值**：
+  - `Model`：複製並替換屬性後的新模型實例。
+
+```python
+from pydantic import BaseModel
+
+class DatabaseConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 5432
+    database: str = "prod_db"
+
+prod_cfg = DatabaseConfig()
+
+# 複製並覆蓋特定欄位生成測試環境配置 (原 prod_cfg 物件不受影響)
+test_cfg = prod_cfg.model_copy(update={"database": "test_db"})
+
+print("正式環境:", prod_cfg.database)  # 輸出: prod_db
+print("測試環境:", test_cfg.database)  # 輸出: test_db
+```
+
+---
+
+##### 實戰整合範例：以動態反射自動走訪模型結構
+
+結合 `model_fields`、`inspect.getdoc` 與 `typing.get_origin / get_args`，即可實現 100% 零硬編碼的動態檢視或選單產生器：
+
+```python
+import inspect
+from typing import get_origin, get_args, Literal
+from pydantic import BaseModel, Field
+
+class ModelsConfig(BaseModel):
+    """ 模型相關配置 """
+    default_model: str = Field(default="qwen3-vl:4b-thinking", description="預設模型")
+    temperature: float = Field(default=0.1, ge=0, le=1.5, description="溫度係數 (0~1.5)")
+
+class AgentConfig(BaseModel):
+    """ Agent 行為配置 """
+    max_turns: int = Field(default=20, ge=1, description="每輪最大調用次數")
+    mode: Literal["always_ask", "default"] = Field(default="default", description="審核模式")
+
+class AppConfig(BaseModel):
+    models: ModelsConfig = Field(default_factory=ModelsConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+
+# 動態解析並走訪整個設定樹
+config = AppConfig()
+
+for cat_name, cat_field in type(config).model_fields.items():
+    sub_cls = cat_field.annotation
+    sub_inst = getattr(config, cat_name)
+    doc = inspect.getdoc(sub_cls) or cat_name
+    print(f"\n[ 分類: {doc.strip()} ]")
+
+    for f_name, f_info in sub_cls.model_fields.items():
+        curr_val = getattr(sub_inst, f_name)
+        desc = f_info.description or f_name
+        
+        # 動態判斷是否為 Literal 列舉候選
+        if get_origin(f_info.annotation) is Literal:
+            candidates = get_args(f_info.annotation)
+            print(f"  * {desc} = {curr_val} (可選清單: {candidates})")
+        else:
+            print(f"  * {desc} = {curr_val} (型別: {f_info.annotation.__name__})")
+```
+
+---
+
 # 實戰：JSON Schema 生成與 AI 結構化輸出
 
 現代大語言模型（如 **Gemini API** 或 **OpenAI API**）與 **FastAPI OpenAPI** 文件，其底層結構化協定完全基於 Pydantic 生成的 JSON Schema。
@@ -672,3 +904,13 @@ print(response.text)
 
 > **💡 Pydantic 自動深拷貝保護**：  
 > 在原生 Python 函式中寫 `def f(items=[])` 會導致所有呼叫共享同一個列表；但在 Pydantic 欄位中寫 `items: list[str] = []` 是**完全安全的**！Pydantic 會在內部自動為每個實例建立獨立的深拷貝副本，無需強制使用 `Field(default_factory=list)`（但寫 `default_factory` 是更加嚴謹的好習慣）。
+
+---
+
+## 3. 從實例存取 model_fields 觸發 Deprecation 警告
+
+> **⚠️ model_fields 類別存取規範**：  
+> 在 Pydantic 2.11+ 中，若寫 `instance.model_fields` 會拋出：  
+> `UserWarning: Accessing 'model_fields' on an instance of '...' is deprecated. Use 'type(instance).model_fields' or 'Model.model_fields' instead.`  
+> **規範要求**：`model_fields` 是**類別層級**的模型結構藍圖，請永遠使用 `Model.model_fields` 或 `type(instance).model_fields` 進行存取。
+
