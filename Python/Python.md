@@ -117,6 +117,7 @@ def add(a: int, b: int) -> int:
 | **`Any`**                                  | `Any`       | **任意型別**（跳過型別檢查）。範例：`data: Any = get_raw_data()`                                                              |
 | **`Literal[...]`**                         | `Literal`   | **限定只能為特定的字面值內容**。範例：`mode: Literal["read", "write"] = "read"`（literal，文字）                                    |
 | **`Annotated[型別, 元數據, ...]`**              | `Annotated` | **附加元數據的型別**（FastAPI / Pydantic 常用於驗證或依賴注入）。範例：`Age: Annotated[int, Field(gt=0)]`（annotate，註解）                |
+| **`type[類別]`** *(或 `Type[類別]`)*           | `Type`      | **指定「類別物件本身」而非實例**（Python 3.9+ 支援原生小寫）。範例：`cls: type[Animal]`                                              |
 | **`get_origin(型別)`**                       | `Function`  | **取得最外層原始類別**（如 `list[int]` ➔ `list`）。[[#get_origin() 與 get_args() 執行期型別內省神器 (Runtime Introspection)\|詳解]]    |
 | **`get_args(型別)`**                         | `Function`  | **取得內部泛型參數元組**（如 `list[int]` ➔ `(int,)`）。[[#get_origin() 與 get_args() 執行期型別內省神器 (Runtime Introspection)\|詳解]] |
 > 關於 **`Literal[...]`**：
@@ -164,6 +165,59 @@ def add(a: int, b: int) -> int:
 >     yield 1
 >     return "發射！"  # Return型別：結束時回傳 str
 > ```
+> 
+> 關於 **`type[類別]`** (Class Object Type / 類別物件型別)：
+> 
+> 在 Python 中，**類別（Class）本身也是一種物件**。
+> - **實例標註 (`x: User`)**：代表 `x` 是一個已經造好的具體實例（例如 `User("Alice")`）。
+> - **類別物件標註 (`cls: type[User]`)**：代表 `cls` 接收的是「`User` 類別本身（或是其任何子類別）」，而不是實例！
+> 
+> **🍿 生動白話比喻**：  
+> - `x: Car`：手裡拿著「一台已經組裝好的汽車實體」。  
+> - `factory_cls: type[Car]`：手裡拿著「汽車的設計圖紙與生產工廠模具」，隨時可以透過 `factory_cls()` 動態量產出新車！
+> 
+> **版本差異 (PEP 585)**：
+> - **Python 3.9 之前**：需從 `typing` 引入 `Type`，寫作 `Type[C]`。
+> - **Python 3.9+**：原生內建支援小寫 **`type[C]`**，無需額外 `import`。若允許任意類別，可寫 `cls: type` 或 `cls: type[Any]`。
+> 
+> **三大實戰適用情境**：
+> 1. **工廠函式 (Factory Pattern)**：傳入類別動態產生實例。
+> 2. **動態反射與模型解析 (如 Pydantic / ORM)**：函式接收模型類別作為參數（例如 `def parse(model_cls: type[BaseModel], data: dict)`）。
+> 3. **搭配 TypeVar 泛型精準推導**：傳入什麼類別，回傳值就自動推導為該類別的實例。
+> 
+> ```Python
+> from typing import TypeVar
+> from pydantic import BaseModel
+> 
+> # 1. 類別繼承多型支援：type[Animal] 允許傳入 Animal 或其任何子類別
+> class Animal:
+>     pass
+> 
+> class Dog(Animal):
+>     def bark(self) -> str:
+>         return "汪汪！"
+> 
+> # 2. 工廠函式：接收類別本身，現場呼叫製造物件
+> def spawn_animal(cls: type[Animal]) -> Animal:
+>     return cls()
+> 
+> my_pet = spawn_animal(Dog)  # 傳入 Dog 類別，而非 Dog()
+> 
+> # 3. 搭配 TypeVar 實現泛型工廠（IDE 會自動提示精確型別）
+> T = TypeVar("T")
+> def generic_factory(cls: type[T]) -> T:
+>     return cls()
+> 
+> dog_instance = generic_factory(Dog)  # IDE 精確推導型別為 Dog！
+> 
+> # 4. 框架與模型解析應用：接收 Pydantic 模型類別本體
+> class UserSchema(BaseModel):
+>     name: str
+>     age: int
+> 
+> def load_config(schema_cls: type[BaseModel], payload: dict) -> BaseModel:
+>     return schema_cls.model_validate(payload)
+> ```
 
 ---
 
@@ -197,6 +251,7 @@ def add(a: int, b: int) -> int:
 | **`Optional[str]`** | `Union` | `(str, <class 'NoneType'>)` | 等同於 `Union[str, None]` |
 | **`Literal["read", "write"]`** | `Literal` | `('read', 'write')` | 字面值限定，參數為允許的字串值 |
 | **`Annotated[float, "單位:元"]`** | `Annotated` | `(float, '單位:元')` | 第 0 項為真實型別，第 1 項起為元數據 |
+| **`type[int]`** *(或 `type[User]`)* | `type` | `(int,)` *(或 `(User,)`)* | 外層是類別物件型別，內部為限定的目標類別 |
 | **`int`** *(一般純型別)* | `None` | `()` | 非泛型別，無外層包裝與內部參數 |
 
 ---

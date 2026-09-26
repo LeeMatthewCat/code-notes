@@ -72,24 +72,24 @@ Order(
 
 # 核心 API 類別與方法字典對照表
 
-| 類別 / 函式名稱 | 主要用途 | 典型適用情境 |
-| :--- | :--- | :--- |
-| **[[#BaseModel 基礎資料模型定義\|BaseModel]]** | **所有資料模型的基礎父類別** | 定義 API 請求/回應結構、資料庫傳輸物件 (DTO) |
-| **[[#Field() 欄位進階約束\|Field()]]** | **設定欄位約束、預設值、別名與說明** | 限制數值範圍 (`ge=0`)、字串長度、指定 `description` |
-| **[[#model.model_dump() 與 model.model_dump_json() 序列化\|model.model_dump()]]** | **將模型物件轉換為原生 Python 字典** | 寫入資料庫、傳遞給其他只吃 dict 的函式庫 |
-| **[[#model.model_dump() 與 model.model_dump_json() 序列化\|model.model_dump_json()]]** | **將模型物件直接序列化為 JSON 字串** | 網路傳輸、快取存檔、API 回傳 |
-| **[[#BaseModel.model_validate() 與 model_validate_json() 反序列化\|BaseModel.model_validate()]]** | **傳入字典進行驗證並建立模型實例** | 接收 API 請求 Body、讀取資料庫回傳的 dict |
-| **[[#BaseModel.model_validate() 與 model_validate_json() 反序列化\|BaseModel.model_validate_json()]]** | **傳入 JSON 字串進行驗證並建立實例** | 接收外部 Webhook、讀取本地 JSON 檔案 |
-| **[[#1. JSON Schema 生成雙雄對照 (BaseModel vs TypeAdapter)\|BaseModel.model_json_schema()]]** | **生成標準的 JSON Schema 字典** | 傳給 LLM 進行結構化輸出 (Structured Outputs) |
-| **[[#TypeAdapter() 原生型別與頂層容器適配器\|TypeAdapter()]]** | **免定義 BaseModel，直接校驗任意型別/清單** | 驗證頂層清單 `list[User]`、字典或原生型別 `int` |
-| **[[#@field_validator() 單一欄位自訂校驗\|@field_validator()]]** | **自訂單一欄位的進階校驗規則** | 檢查密碼強度、校驗自訂格式、過濾非法字元 |
-| **[[#@model_validator() 跨欄位全模型聯合校驗\|@model_validator()]]** | **跨欄位聯合校驗或整體驗證** | 比對「密碼」與「確認密碼」是否一致 |
-| **[[#ConfigDict 模型全域設定\|ConfigDict]]** | **配置模型全域行為** | 禁止未知額外欄位 (`extra='forbid'`)、自動去除前後空白 |
-| **[[#Model.model_fields 類別欄位元數據字典\|Model.model_fields]]** | **獲取模型所有定義的欄位定義與約束 (FieldInfo)** | 動態選單生成、動態表單、架構反射與動態驗證 |
-| **[[#instance.model_fields_set 實例已賦值欄位集合\|instance.model_fields_set]]** | **獲取實例中明確被手動賦值的欄位名稱集合** | HTTP PATCH 局部更新、判斷欄位是否被主動指定 |
-| **[[#instance.model_extra 實例額外未知欄位字典\|instance.model_extra]]** | **獲取未在模型中定義但被傳入的額外欄位** | 搭配 `extra='allow'`，支援動態擴充屬性接收 |
-| **[[#Model.model_computed_fields 動態計算欄位字典\|Model.model_computed_fields]]** | **獲取使用 @computed_field 裝飾的計算欄位** | 檢查計算屬性定義與動態欄位計算結果 |
-| **[[#instance.model_copy() 實例複製與局部動態更新\|instance.model_copy()]]** | **複製模型實例，並支援覆蓋指定欄位內容** | 不可變物件安全更新、情境模擬與單元測試 |
+| 類別 / 函式名稱                                                                                         | 主要用途                             | 典型適用情境                                |
+| :------------------------------------------------------------------------------------------------ | :------------------------------- | :------------------------------------ |
+| **[[#BaseModel 基礎資料模型定義\|BaseModel]]**                                                            | **所有資料模型的基礎父類別**                 | 定義 API 請求/回應結構、資料庫傳輸物件 (DTO)          |
+| **[[#Field() 欄位進階約束\|Field()]]**                                                                  | **設定欄位約束、預設值、別名與說明**             | 限制數值範圍 (`ge=0`)、字串長度、指定 `description` |
+| **[[#model.model_dump() 與 model.model_dump_json() 序列化\|model.model_dump()]]**                     | **將模型物件轉換為原生 Python 字典**         | 寫入資料庫、傳遞給其他只吃 dict 的函式庫               |
+| **[[#model.model_dump() 與 model.model_dump_json() 序列化\|model.model_dump_json()]]**                | **將模型物件直接序列化為 JSON 字串**          | 網路傳輸、快取存檔、API 回傳                      |
+| **[[#BaseModel.model_validate() 與 model_validate_json() 反序列化\|BaseModel.model_validate()]]**      | **傳入字典進行驗證並建立模型實例**              | 接收 API 請求 Body、讀取資料庫回傳的 dict          |
+| **[[#BaseModel.model_validate() 與 model_validate_json() 反序列化\|BaseModel.model_validate_json()]]** | **傳入 JSON 字串進行驗證並建立實例**          | 接收外部 Webhook、讀取本地 JSON 檔案             |
+| **[[#1. JSON Schema 生成雙雄對照 (BaseModel vs TypeAdapter)\|BaseModel.model_json_schema()]]**          | **生成標準的 JSON Schema 字典**         | 傳給 LLM 進行結構化輸出 (Structured Outputs)   |
+| **[[#TypeAdapter() 原生型別與頂層容器適配器\|TypeAdapter()]]**                                                | **免定義 BaseModel，直接校驗任意型別/清單**    | 驗證頂層清單 `list[User]`、字典或原生型別 `int`     |
+| **[[#@field_validator() 單一欄位自訂校驗\|@field_validator()]]**                                          | **自訂單一欄位的進階校驗規則**                | 檢查密碼強度、校驗自訂格式、過濾非法字元                  |
+| **[[#@model_validator() 跨欄位全模型聯合校驗\|@model_validator()]]**                                        | **跨欄位聯合校驗或整體驗證**                 | 比對「密碼」與「確認密碼」是否一致                     |
+| **[[#ConfigDict 模型全域設定\|ConfigDict]]**                                                            | **配置模型全域行為**                     | 禁止未知額外欄位 (`extra='forbid'`)、自動去除前後空白  |
+| **[[#Model.model_fields 類別欄位元數據字典\|Model.model_fields]]**                                         | **獲取模型所有定義的欄位定義與約束 (FieldInfo)** | 動態選單生成、動態表單、架構反射與動態驗證                 |
+| **[[#instance.model_fields_set 實例已賦值欄位集合\|instance.model_fields_set]]**                           | **獲取實例中明確被手動賦值的欄位名稱集合**          | HTTP PATCH 局部更新、判斷欄位是否被主動指定           |
+| **[[#instance.model_extra 實例額外未知欄位字典\|instance.model_extra]]**                                    | **獲取未在模型中定義但被傳入的額外欄位**           | 搭配 `extra='allow'`，支援動態擴充屬性接收         |
+| **[[#Model.model_computed_fields 動態計算欄位字典\|Model.model_computed_fields]]**                        | **獲取使用 @computed_field 裝飾的計算欄位** | 檢查計算屬性定義與動態欄位計算結果                     |
+| **[[#instance.model_copy() 實例複製與局部動態更新\|instance.model_copy()]]**                                 | **複製模型實例，並支援覆蓋指定欄位內容**           | 不可變物件安全更新、情境模擬與單元測試                   |
 
 ---
 
