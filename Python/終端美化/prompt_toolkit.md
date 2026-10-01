@@ -1,6 +1,16 @@
+# 概念與原理
+
+## 什麼是 prompt_toolkit？
+
 這是一個強大的 Python 終端互動式命令列應用函式庫。
 
 主要用來取代原生的 `input()`，提供如自動補全、語法高亮、多行輸入等進階功能。
+
+> **[生動比喻]**：  
+> - **原生的 `input()`**：像「陽春的投幣式電話」，按鍵撥號後只能直直講完掛斷，中途打錯字難以修改，無法自動預測也無法上色。  
+> - **`prompt_toolkit`**：像「現代智慧型手機的鍵盤與作業系統」，打字時會即時自動預測單字、即時標記語法色彩、支援自由移動游標，甚至還能監聽按鍵事件自訂專屬熱鍵！  
+> - **`Buffer` (文字編輯緩衝區)**：像「手機螢幕中央正在輸入的即時文字草稿紙」，每一筆輸入、刪除、游標位移與歷史紀錄都在這張草稿紙上即時計算。  
+> - **`on_text_changed`**：像「草稿紙上的感應鈴鐺」，只要輸入框有任何字元變動，鈴鐺立刻響起並通知後台執行即時校驗、動態計數或預覽更新！
 
 ---
 
@@ -12,20 +22,47 @@
 - **支援豐富互動**：輕鬆實作命令歷史記錄、語法高亮與自訂快捷鍵。
 - **全螢幕應用**：甚至可用來打造如 `vim` 或 `nano` 般的全螢幕終端程式。
 
-| 功能比較 | 原生 `input()` | `prompt_toolkit` 的 `prompt()` |
+| 功能比較 | 原生 `input()` | `prompt_toolkit` |
 | :--- | :--- | :--- |
-| **自動補全** | ❌ 不支援 | ✅ 支援多種 Completer |
-| **語法高亮** | ❌ 不支援 | ✅ 支援 Pygments 整合 |
-| **多行輸入** | ❌ 不支援 | ✅ 支援 |
-| **終端相容性** | ⚠️ 各系統表現不一 | ✅ 跨平台高度相容 |
+| **自動補全** | [不支援] | [支援] 多種 Completer |
+| **語法高亮** | [不支援] | [支援] Pygments 整合 |
+| **多行輸入** | [不支援] | [支援] |
+| **終端相容性** | 各系統表現不一 | 跨平台高度相容 |
 
 ---
 
-## 基礎互動與輸入
+# 核心 API 類別、函式與屬性字典對照表
+
+| 類別 / 函式 / 屬性名稱 | 主要用途 | 典型適用情境 |
+| :--- | :--- | :--- |
+| **[[#prompt() 單次互動提示符\|prompt()]]** | **發起單次命令列互動輸入** | 簡易腳本、密碼輸入、單次問答互動 |
+| **[[#PromptSession() 會話管理類別\|PromptSession()]]** | **建立具備歷史紀錄與共享設定的持續會話** | REPL 互動環境、CLI 交互式 Shell |
+| **[[#FileHistory() 持久化歷史紀錄\|FileHistory()]]** | **將命令歷史持久化儲存至本機檔案** | 重啟程式後保留歷史輸入紀錄 |
+| **[[#AutoSuggestFromHistory() 歷史自動建議\|AutoSuggestFromHistory()]]** | **依據歷史紀錄提供即時行內灰色自動建議** | 打造類似 Fish Shell 的現代化終端輸入體驗 |
+| **[[#bottom_toolbar 底部狀態列\|bottom_toolbar]]** | **在終端輸入畫面底部常駐顯示輔助資訊列** | 快捷鍵提示、目前狀態、字數統計顯示 |
+| **[[#WordCompleter() 建立字詞補全清單\|WordCompleter()]]** | **建立基於已知單字清單的自動補全器** | 靜態指令集、CLI 參數選項補全 |
+| **[[#KeyBindings() 建立與攔截快捷鍵\|KeyBindings()]]** | **宣告自訂按鍵規則與信號攔截器** | 自訂熱鍵（如 Ctrl+Q 退出、Tab 縮排） |
+| **[[#Buffer 核心文字編輯緩衝區類別\|Buffer]]** | **終端文字輸入與編輯的核心狀態大腦** | 底層文字操作、自訂 UI 控制項、複雜編輯器 |
+| **[[#event.current_buffer 當前作用中緩衝區屬性\|event.current_buffer]]** | **快捷鍵事件中取得目前焦點所在的緩衝區實例** | 熱鍵事件中動態修改文字、移動游標、強制送出 |
+| **[[#buffer.text 緩衝區文字字串內容\|buffer.text]]** | **讀取或寫入當前緩衝區的文字純字串** | 檢查輸入內容、程式化設定或清空文字 |
+| **[[#buffer.cursor_position 游標位置索引\|buffer.cursor_position]]** | **讀取或移動目前文字游標在字串中的索引位置** | 控制輸入游標跳轉、精確定位插入點 |
+| **[[#buffer.on_text_changed 文字變更事件勾點\|buffer.on_text_changed]]** | **當緩衝區文字產生任何變更時觸發的事件監聽勾點** | 即時語法檢查、動態字數統計、輸入聯動預覽 |
+| **[[#buffer.on_cursor_position_changed 游標移動事件勾點\|buffer.on_cursor_position_changed]]** | **當文字游標位置發生移動時觸發的事件監聽勾點** | 追蹤行列座標、動態高亮當前游標所在詞彙 |
+| **[[#buffer.insert_text() 在游標處插入文字\|buffer.insert_text()]]** | **在當前游標所在位置插入指定文字字串** | 巨集輸入、快捷鍵文字模板自動貼上 |
+| **[[#buffer.validate_and_handle() 驗證並提交內容\|buffer.validate_and_handle()]]** | **執行驗證並觸發內容提交 (模擬按下 Enter 送出)** | 自訂按鍵快速執行命令、程式化自動送出 |
+| **[[#buffer.reset() 清空並重置緩衝區\|buffer.reset()]]** | **重置緩衝區狀態並清空文字與游標** | 取消當前輸入、清空輸入框重開下一輪 |
+| **[[#yes_no_dialog() 確認對話框\|yes_no_dialog()]]** | **彈出全螢幕置中的 Yes/No 確認對話框** | 執行危險操作前防呆確認 |
+| **[[#print_formatted_text() 格式化輸出\|print_formatted_text()]]** | **印出帶有 HTML 樣式標記的彩色終端文字** | 取代原生 print() 實現安全彩色輸出 |
+| **[[#HTML() 標籤化上色系統\|HTML()]]** | **使用微型 XML 標籤語法定義色彩與文字樣式** | 標籤化定義提示詞與狀態列字體樣式 |
+| **[[#Style.from_dict() 自訂樣式表\|Style.from_dict()]]** | **建立類似 CSS 規則的全域色彩主題樣式表** | 統一管理全應用色彩配置與輸入文字顏色 |
+
+---
+
+# 基礎互動與輸入
 
 最基礎的用法就是直接匯入並使用 `prompt()`，能做到所有 `input()` 能做的事。
 
-### prompt() 單次互動提示符
+##### prompt() 單次互動提示符
 
 - **使用時機**：當你只需要在程式中偶爾向使用者詢問一次資料（例如問密碼、問名稱），不需要保留跨次對話的歷史紀錄時使用。
 - **語法**：`prompt(message: str, completer=None, is_password=False, key_bindings=None, bottom_toolbar=None, ...)`
@@ -50,7 +87,9 @@ password = prompt(..., is_password=True)
 ...
 ```
 
-### PromptSession() 會話管理
+---
+
+##### PromptSession() 會話管理類別
 
 - **使用時機**：當你需要建立一個像 Bash 或 Python Shell 那樣**持續運行的對話迴圈**，並希望自動保存歷史紀錄或共享共用設定檔（如自動補全器、自訂配色樣式）時使用。
 - **語法**：`PromptSession(history=None, auto_suggest=None, completer=None, style=None, ...)`
@@ -86,7 +125,9 @@ while True:
     ...
 ```
 
-#### FileHistory() 持久化歷史紀錄與共享狀態
+---
+
+##### FileHistory() 持久化歷史紀錄
 
 - **使用時機**：搭配 `PromptSession` 使用，希望即使關閉了程式，下一次打開依舊能用方向鍵找回昨天的輸入紀錄時。
 - **語法**：`FileHistory(filename: str)`
@@ -105,7 +146,9 @@ session = PromptSession(history=FileHistory('.my_app_history'))
 ...
 ```
 
-#### AutoSuggestFromHistory() 歷史自動建議
+---
+
+##### AutoSuggestFromHistory() 歷史自動建議
 
 - **使用時機**：想提供類似 Fish Shell 那樣的高級體驗，在使用者打字時以灰色文字自動預測他們可能要打的句子。
 - **語法**：`AutoSuggestFromHistory()`
@@ -128,7 +171,7 @@ session = PromptSession(auto_suggest=AutoSuggestFromHistory())
 ...
 ```
 
-### 其他實用參數 (Other Parameters)
+---
 
 ##### bottom_toolbar 底部狀態列
 
@@ -153,11 +196,11 @@ answer = prompt("請輸入：", bottom_toolbar=toolbar_text)
 
 ---
 
-## 自動補全 (Auto-completion)
+# 自動補全 (Auto-completion)
 
 透過 `Completer`，能在使用者輸入時即時提供下拉選單建議。
 
-### WordCompleter() 建立字詞補全清單
+##### WordCompleter() 建立字詞補全清單
 
 - **使用時機**：當你需要給使用者一個固定、已知的單字清單（例如指令、選項參數、路徑），讓他們能在輸入時透過 Tab 鍵快速補全時使用。最簡單且最常用的實作。
 - **語法**：`WordCompleter(words: List[str], ignore_case: bool = False, WORD: bool = False, meta_dict: Optional[Dict[str, str]] = None, match_middle: bool = False, ...)`
@@ -166,7 +209,7 @@ answer = prompt("請輸入：", bottom_toolbar=toolbar_text)
   - `ignore_case`：布林值，設定為 `True` 時將忽略英文大小寫。
   - `WORD`：布林值，預設為 `False`。決定分詞邊界規則：
     - **`WORD=False` (預設小寫單字模式)**：使用常規單字字元 (`\w+`) 作為邊界，遇到 `-`、`.`、`/`、`:` 等標點符號時會被當作分隔符號截斷。
-    - **`WORD=True` (大寫 WORD 模式 ⭐ CLI 必備)**：使用非空白字元 (`\S+`) 作為邊界（類似 Vim 的 WORD），只有遇到空格才截斷！
+    - **`WORD=True` (大寫 WORD 模式 [推薦] CLI 必備)**：使用非空白字元 (`\S+`) 作為邊界（類似 Vim 的 WORD），只有遇到空格才截斷！
     - **解決痛點**：若要補全包含連字號的 CLI 參數（如 `--help`、`--version`）或路徑（如 `src/main.py`），**必須設為 `WORD=True`**，否則輸入 `--` 時會被當成符號截斷而無法補全！
   - `meta_dict`：字典物件 (Dict)，為每個補全單字在下拉選單右側顯示即時說明提示文字（Meta Information）。
   - `match_middle`：布林值，設定為 `True` 時支援中綴匹配（輸入部分子字串即可觸發補全）。
@@ -206,13 +249,13 @@ print(f"執行指令: {text}")
 
 ---
 
-## 快捷鍵綁定 (Key Bindings)
+# 快捷鍵綁定 (Key Bindings)
 
 就像是為終端機打造專屬的「快捷鍵設定面板」，允許開發者攔截鍵盤預設事件，並賦予全新的自訂行為。
 
-> **💡 觀念釐清**：在終端機按下 `Ctrl+C` 預設是中斷程式，按下 `Enter` 預設是送出。透過快捷鍵綁定，你可以完全攔截這些訊號，例如把 `Tab` 鍵綁定成「插入四個空白」而非預設的跳轉。
+> **[觀念釐清]**：在終端機按下 `Ctrl+C` 預設是中斷程式，按下 `Enter` 預設是送出。透過快捷鍵綁定，你可以完全攔截這些訊號，例如把 `Tab` 鍵綁定成「插入四個空白」而非預設的跳轉。
 
-### KeyBindings() 建立與攔截快捷鍵
+##### KeyBindings() 建立與攔截快捷鍵
 
 - **使用時機**：想要捕捉特定的按鍵組合（如 `Ctrl-Q`、`Tab`），並賦予它們特定行為（如退出程式、插入文字）時使用。
 - **語法**：`KeyBindings()`
@@ -240,11 +283,222 @@ text = prompt(..., key_bindings=bindings)
 
 ---
 
-## 實用對話框元件 (Dialogs)
+# 緩衝區與文字編輯核心 (Buffer & Text Manipulation)
+
+在 `prompt_toolkit` 的底層架構中，所有文字輸入、游標移動與歷史紀錄，全部由核心的 **`Buffer`（緩衝區物件）** 全權掌管。
+
+無論是單次 `prompt()`、長期的 `PromptSession`，或是全螢幕終端應用，文字永遠不是孤立的字串，而是被保存在 `Buffer` 之中。
+
+---
+
+##### Buffer 核心文字編輯緩衝區類別
+
+- **使用時機**：當你需要建構自訂的命令列輸入框、打造多視窗文字編輯器，或需要底層精細控制文字輸入狀態與驗證規則時使用。
+- **語法**：`Buffer(completer=None, auto_suggest=None, history=None, validator=None, on_text_changed=None, on_cursor_position_changed=None, multiline=True, read_only=False, ...)`
+- **參數說明**：
+  - `completer`：綁定此緩衝區專用的自動補全器。
+  - `auto_suggest`：綁定此緩衝區專用的歷史建議器。
+  - `history`：歷史紀錄管理物件。
+  - `validator`：文字輸入即時校驗器（如 `Validator.from_callable`）。
+  - `on_text_changed`：當文字內容發生變動時的回呼函式（接收 `Buffer` 作為唯一參數）。
+  - `on_cursor_position_changed`：當游標移動時的回呼函式。
+  - `multiline`：布林值，是否允許輸入多行文字。
+  - `read_only`：布林值，是否為唯讀緩衝區。
+- **回傳值**：
+  - `Buffer`：文字編輯緩衝區實例。
+
+```python
+from prompt_toolkit.buffer import Buffer
+
+# 1. 定義即時變更監聽函式
+def handle_change(buf):
+    print(f"緩衝區文字變動: {buf.text}")
+
+# 2. 實例化獨立緩衝區
+my_buffer = Buffer(on_text_changed=handle_change)
+my_buffer.insert_text("Hello World")
+```
+
+---
+
+##### event.current_buffer 當前作用中緩衝區屬性
+
+- **使用時機**：在快捷鍵事件回呼函式（KeyBinding Handler）中，取得使用者當前正在打字、游標聚焦的 `Buffer` 物件實例（等同於 `event.app.current_buffer`）。
+- **語法**：`event.current_buffer`
+- **屬性型別**：`Buffer` 物件。
+
+```python
+from prompt_toolkit import prompt
+from prompt_toolkit.key_binding import KeyBindings
+
+bindings = KeyBindings()
+
+# 按下 F2 鍵時，自動將輸入框清空
+@bindings.add('f2')
+def _(event):
+    buffer = event.current_buffer
+    buffer.reset()  # 操作當前作用中的緩衝區
+
+text = prompt("> ", key_bindings=bindings)
+```
+
+---
+
+##### buffer.text 緩衝區文字字串內容
+
+- **使用時機**：讀取使用者當前輸入框中的完整純文字內容，或由程式碼強制賦值替換整個輸入框文字。
+- **語法**：`buffer.text` (可讀寫屬性)
+- **屬性型別**：`str` 字串。
+
+```python
+@bindings.add('c-k')
+def _(event):
+    buf = event.current_buffer
+    print(f"\n目前輸入框內容字數：{len(buf.text)}")
+    # 強制將輸入框文字設為指定內容
+    buf.text = "clear"
+```
+
+---
+
+##### buffer.cursor_position 游標位置索引
+
+- **使用時機**：獲取或設定游標在文字字串中的整數索引（從 `0` 到 `len(buffer.text)`），用於精確控制文字插入或跳轉。
+- **語法**：`buffer.cursor_position` (可讀寫整數屬性)
+- **屬性型別**：`int` 整數。
+
+```python
+@bindings.add('c-a')
+def _(event):
+    buf = event.current_buffer
+    # 將游標瞬間移動至文字最開頭
+    buf.cursor_position = 0
+
+@bindings.add('c-e')
+def _(event):
+    buf = event.current_buffer
+    # 將游標瞬間移動至文字最末端
+    buf.cursor_position = len(buf.text)
+```
+
+---
+
+##### buffer.on_text_changed 文字變更事件勾點
+
+- **使用時機**：每當使用者輸入字元、刪除字元、剪下貼上，或程式碼動態修改 `buffer.text` 時被自動觸發。極常用於即時字數統計、動態語法分析與即時聯動提示。
+- **語法**：
+  - 建構子宣告：`Buffer(on_text_changed=回呼函式)`
+  - 亦支援運算子附加：`buffer.on_text_changed += 回呼函式`
+- **回呼簽名**：`callback(buffer: Buffer) -> None`（接收當前被修改的 `Buffer` 物件）。
+- **屬性型別**：`Event[Callable[[Buffer], None]]`。
+
+```python
+from prompt_toolkit import PromptSession
+
+session = PromptSession()
+
+# 1. 定義文字變動監聽回呼
+def on_change(buf):
+    # 每次打字或刪除時都會即時印出最新字數
+    current_len = len(buf.text)
+    # 注意：在生產環境中常搭配更新狀態列或發起異步驗證
+
+# 2. 動態註冊監聽至 PromptSession 的預設緩衝區
+session.default_buffer.on_text_changed += on_change
+
+text = session.prompt("輸入內容 > ")
+```
+
+---
+
+##### buffer.on_cursor_position_changed 游標移動事件勾點
+
+- **使用時機**：當使用者按方向鍵移動游標、點擊滑鼠或呼叫跳轉函式時觸發。適合用於動態取得游標當前所在單字、高亮對應標籤或更新行列計數器。
+- **語法**：
+  - 建構子宣告：`Buffer(on_cursor_position_changed=回呼函式)`
+  - 運算子附加：`buffer.on_cursor_position_changed += 回呼函式`
+- **回呼簽名**：`callback(buffer: Buffer) -> None`。
+- **屬性型別**：`Event[Callable[[Buffer], None]]`。
+
+```python
+from prompt_toolkit.buffer import Buffer
+
+def on_cursor_move(buf):
+    # 取得游標當前索引位置
+    pos = buf.cursor_position
+    # 搭配 Document 分析游標當前所在的行號與欄號
+    row = buf.document.cursor_position_row
+    col = buf.document.cursor_position_col
+
+buf = Buffer(on_cursor_position_changed=on_cursor_move)
+```
+
+---
+
+##### buffer.insert_text() 在游標處插入文字
+
+- **使用時機**：在快捷鍵或自動化流程中，於目前游標所在位置精確插入一段文字，並自動向後推移游標。
+- **語法**：`buffer.insert_text(data, overwrite=False, move_cursor=True, fire_event=True)`
+- **參數說明**：
+  - `data`：要插入的字串。
+  - `overwrite`：布林值，預設為 `False`。若為 `True`，則覆寫游標後方的文字。
+  - `move_cursor`：布林值，預設為 `True`。插入後游標自動移至新文字末端。
+  - `fire_event`：布林值，預設為 `True`。是否觸發 `on_text_changed` 事件。
+- **回傳值**：
+  - `None`。
+
+```python
+@bindings.add('c-t')
+def _(event):
+    # 按下 Ctrl-T，在游標處插入一段範本字串
+    buf = event.current_buffer
+    buf.insert_text("[TODO: 待完成任務] ")
+```
+
+---
+
+##### buffer.validate_and_handle() 驗證並提交內容
+
+- **使用時機**：在自訂按鍵或自動補全完成後，程式化模擬「按下 Enter 送出」的行為。它會先觸發驗證器，通過後立即結束此輪互動並回傳文字。
+- **語法**：`buffer.validate_and_handle()`
+- **參數說明**：無須傳入參數。
+- **回傳值**：
+  - `None`。
+
+```python
+@bindings.add('c-j')
+def _(event):
+    # 按下 Ctrl-J，立刻進行校驗並強制送出當前輸入
+    buf = event.current_buffer
+    buf.validate_and_handle()
+```
+
+---
+
+##### buffer.reset() 清空並重置緩衝區
+
+- **使用時機**：重置文字編輯器狀態，將文字內容清空、游標歸零並初始化復原歷史（Undo Stack）。
+- **語法**：`buffer.reset(document=None, append_to_history=False)`
+- **參數說明**：
+  - `document`：可選，傳入全新的 `Document` 物件替代當前內容。若為 `None` 則清空為空字串。
+  - `append_to_history`：布林值，是否將清空前的內容寫入歷史紀錄。
+- **回傳值**：
+  - `None`。
+
+```python
+@bindings.add('escape')
+def _(event):
+    # 按下 Esc 鍵時，清空當前輸入內容
+    event.current_buffer.reset()
+```
+
+---
+
+# 實用對話框元件 (Dialogs)
 
 提供類似 GUI 彈出視窗的終端機介面，非常適合用於確認操作或顯示訊息。
 
-### yes_no_dialog() 確認對話框
+##### yes_no_dialog() 確認對話框
 
 - **使用時機**：在執行不可逆操作（如刪除檔案、覆寫資料）前，需要跳出一個佔據終端畫面中央的醒目對話框，強迫使用者選擇 Yes 或 No 時。
 - **語法**：`yes_no_dialog(title: str, text: str)`
@@ -260,10 +514,11 @@ text = prompt(..., key_bindings=bindings)
 from prompt_toolkit.shortcuts import yes_no_dialog
 
 # 專注展示確認視窗的建立與執行，它會佔用整個終端畫面
-result = yes_no_dialog(
+dialog_app = yes_no_dialog(
     title='確認操作',
     text='您確定要刪除所有檔案嗎？'
-).run()
+)
+result = dialog_app.run()
 
 if result:
     ...
@@ -271,11 +526,11 @@ if result:
 
 ---
 
-## 格式化色彩與字體 (Formatted Text)
+# 格式化色彩與字體 (Formatted Text)
 
 它擁有自己的微型 XML 解析器，提供比純 ANSI 碼更直覺的上色方式。
 
-### print_formatted_text() 格式化輸出
+##### print_formatted_text() 格式化輸出
 
 - **使用時機**：想在終端機印出帶有 `HTML()` 或其他樣式的彩色文字，用來取代原生只能印出純白字的 `print()` 時。
 - **語法**：`print_formatted_text(*values, sep=' ', end='\n', ...)`
@@ -297,7 +552,9 @@ styled_text = HTML("<b>粗體</b> 和 <ansired>紅色文字</ansired>")
 print_formatted_text(styled_text, ...)
 ```
 
-### HTML() 標籤化上色系統
+---
+
+##### HTML() 標籤化上色系統
 
 - **使用時機**：想要直覺地為終端文字加上顏色、粗體或背景色，並將結果安全地傳遞給 `prompt()` 或 `print_formatted_text()` 顯示時。
 - **語法**：`HTML(value: str)`
@@ -323,11 +580,11 @@ answer = prompt(styled_prompt)
 ...
 ```
 
-> **💡 小提醒**：`prompt_toolkit` 底層會完全接管終端機畫面，請**絕對避免**直接把帶有 ANSI 色碼的 `rich` 字串硬塞給 `prompt()`，這會導致亂碼與游標錯位！若想自訂色彩，請一律使用 `HTML()`。
+> **[小提醒]**：`prompt_toolkit` 底層會完全接管終端機畫面，請**絕對避免**直接把帶有 ANSI 色碼的 `rich` 字串硬塞給 `prompt()`，這會導致亂碼與游標錯位！若想自訂色彩，請一律使用 `HTML()`。
 
 ---
 
-### Style.from_dict() 自訂樣式表
+##### Style.from_dict() 自訂樣式表
 
 - **使用時機**：當你需要為終端互動介面統一定義外觀主題（類似 CSS 樣式表），設定提示詞文字、補全下拉選單高亮、底部狀態列顏色，並注入給 `PromptSession` 或 `prompt()` 時使用。
 - **語法**：`Style.from_dict(style_dict: dict)`
@@ -378,3 +635,107 @@ text = session.prompt('> ')
 ```
 
 ---
+
+# 實戰避坑與核心天條
+
+## 1. on_text_changed 內部修改文字引發遞迴爆棧
+
+> **[核心天條]：切勿在 `on_text_changed` 監聽回呼內部直接改寫 `buffer.text`，否則會觸發無限遞迴！**
+
+- **錯誤症狀**：
+  程式報錯 `RecursionError: maximum recursion depth exceeded while calling a Python object` 並立即崩潰。
+- **背後原理**：
+  `buffer.text = ...` 或 `buffer.insert_text(...)` 會發出文字修改事件，該事件會再次觸發 `on_text_changed` 監聽函式，從而形成自己呼叫自己的死迴圈。
+
+```python
+from prompt_toolkit.buffer import Buffer
+
+# [錯誤寫法]：直接在回呼內部修改 text，引爆無窮遞迴
+# def bad_change_handler(buf):
+#     buf.text = buf.text.upper()  # 再次觸發 on_text_changed -> 崩潰！
+
+# [正確寫法]：使用防重入布林標記 (Reentrancy Guard)
+_is_updating = False
+
+def safe_change_handler(buf):
+    global _is_updating
+    if _is_updating:
+        return
+    
+    _is_updating = True
+    try:
+        # 執行需要的文字自動轉換或修正
+        pass
+    finally:
+        _is_updating = False
+```
+
+---
+
+## 2. 混用 Rich ANSI 字串造成游標位置錯位
+
+> **[核心天條]：嚴禁將帶有 ANSI 逸出碼的字串直接傳給 `prompt()`！**
+
+- **錯誤症狀**：
+  文字顯示正常但使用者按 Backspace 刪字時游標跳動混亂、刪除位置不對，或長字串自動換行時整行破版重疊。
+- **背後原理**：
+  `prompt_toolkit` 需要精確計算提示字串的字元可視寬度以維持終端機游標座標。原生 ANSI 色碼（如 `\x1b[31m`）會被誤算為可視寬度，導致游標計算產生偏差。必須一律使用 `HTML()` 包裹。
+
+```python
+from prompt_toolkit import prompt
+from prompt_toolkit.formatted_text import HTML
+
+# [錯誤寫法]：混用外部 ANSI 跳脫碼
+# prompt("\033[91mName: \033[0m")
+
+# [正確寫法]：使用 prompt_toolkit 原生 HTML 標記
+prompt(HTML("<ansired>Name: </ansired>"))
+```
+
+---
+
+## 3. CLI 參數補全漏設 WORD=True 造成連字號截斷
+
+> **[核心天條]：補全帶有 `--` 連字號或路徑斜線的詞彙時，WordCompleter 必須顯式指定 `WORD=True`！**
+
+- **錯誤症狀**：
+  使用者在終端機打出 `--` 或 `git-` 時，下拉補全清單完全不彈出。
+- **背後原理**：
+  `WordCompleter` 預設以 `\w+`（字母數字底線）為單字邊界，連字號 `-` 被當成切詞標點截斷，導致前綴無法正確匹配候選清單。
+
+```python
+from prompt_toolkit.completion import WordCompleter
+
+# [錯誤寫法]：預設 WORD=False，無法識別 --help
+# completer = WordCompleter(['--help', '--version'])
+
+# [正確寫法]：以非空白字元為分詞邊界
+completer = WordCompleter(['--help', '--version'], WORD=True)
+```
+
+---
+
+## 4. 快捷鍵回呼中執行阻塞任務造成終端凍結
+
+> **[核心天條]：KeyBindings 處理常式必須極速返回，耗時 I/O 必須非同步委派！**
+
+- **錯誤症狀**：
+  按下自訂快捷鍵後，整個終端介面瞬間凍結無回應，使用者無法繼續輸入或退出。
+- **背後原理**：
+  `prompt_toolkit` 建立在單一執行緒事件迴圈上，任何在事件處理常式中的 `time.sleep()` 或同步網路請求都會直接阻塞畫面渲染引擎。
+
+```python
+import asyncio
+from prompt_toolkit.key_binding import KeyBindings
+
+bindings = KeyBindings()
+
+# [正確寫法]：透過 app.create_background_task 發起非同步背景任務
+@bindings.add('c-s')
+def _(event):
+    async def async_save():
+        # 模擬非同步背景保存，完全不卡死使用者打字
+        await asyncio.sleep(1)
+    
+    event.app.create_background_task(async_save())
+```
