@@ -39,7 +39,7 @@
 | **[[#PromptSession() 會話管理類別\|PromptSession()]]** | **建立具備歷史紀錄與共享設定的持續會話** | REPL 互動環境、CLI 交互式 Shell |
 | **[[#FileHistory() 持久化歷史紀錄\|FileHistory()]]** | **將命令歷史持久化儲存至本機檔案** | 重啟程式後保留歷史輸入紀錄 |
 | **[[#AutoSuggestFromHistory() 歷史自動建議\|AutoSuggestFromHistory()]]** | **依據歷史紀錄提供即時行內灰色自動建議** | 打造類似 Fish Shell 的現代化終端輸入體驗 |
-| **[[#bottom_toolbar 底部狀態列\|bottom_toolbar]]** | **在終端輸入畫面底部常駐顯示輔助資訊列** | 快捷鍵提示、目前狀態、字數統計顯示 |
+| **[[#PromptSession() 的 bottom_toolbar 參數\|PromptSession.bottom_toolbar]]** | **在終端輸入畫面底部常駐顯示輔助資訊列** | 快捷鍵提示、目前狀態、字數統計顯示 |
 | **[[#WordCompleter() 建立字詞補全清單\|WordCompleter()]]** | **建立基於已知單字清單的自動補全器** | 靜態指令集、CLI 參數選項補全 |
 | **[[#KeyBindings() 建立與攔截快捷鍵\|KeyBindings()]]** | **宣告自訂按鍵規則與信號攔截器** | 自訂熱鍵（如 Ctrl+Q 退出、Tab 縮排） |
 | **[[#Buffer 核心文字編輯緩衝區類別\|Buffer]]** | **終端文字輸入與編輯的核心狀態大腦** | 底層文字操作、自訂 UI 控制項、複雜編輯器 |
@@ -91,38 +91,81 @@ password = prompt(..., is_password=True)
 
 ##### PromptSession() 會話管理類別
 
-- **使用時機**：當你需要建立一個像 Bash 或 Python Shell 那樣**持續運行的對話迴圈**，並希望自動保存歷史紀錄或共享共用設定檔（如自動補全器、自訂配色樣式）時使用。
-- **語法**：`PromptSession(history=None, auto_suggest=None, completer=None, style=None, ...)`
-- **參數說明**：由於它支援的參數極多（與 prompt 高度重疊），以下列出核心參數：
+- **使用時機**：當你需要建立一個像 Bash、IPython 或資料庫 CLI 那樣**持續運行的對話迴圈**，並希望跨輪次自動保存歷史紀錄、共享全域配置（如配色主題、自動補全清單、自訂按鍵綁定）時使用。
+- **語法**：`PromptSession(message=None, completer=None, validator=None, auto_suggest=None, style=None, key_bindings=None, bottom_toolbar=None, history=None, ...)`
+- **參數說明**：`PromptSession` 與單次呼叫的 `prompt()` 共享絕大部分參數，以下將核心參數完整歸納：
 
 | 參數名稱 | 期待型別 | 說明 |
 | :--- | :--- | :--- |
-| `history` | `History` | 用於管理歷史紀錄的策略物件（如 `FileHistory`）。 |
-| `auto_suggest` | `AutoSuggest` | 用於自動預測補齊的策略物件（如 `AutoSuggestFromHistory`）。 |
-| `completer` | `Completer` | 一次性綁定的自動補全器，後續呼叫不用再傳。 |
-| `style` | `BaseStyle` / `Style` | 全域樣式表物件（如 `Style.from_dict(...)`），統一設定提示字元、補全選單與狀態列的配色。 |
+| `message` | `str` / `HTML` | 預設終端提示符字串（如 `"> "` 或彩色 HTML 標籤）。 |
+| `completer` | `Completer` | 全域自動補全器（如 `WordCompleter`），在每次呼叫時自動啟用。 |
+| `validator` | `Validator` | 輸入內容即時驗證器，未通過驗證前禁止送出。 |
+| `auto_suggest` | `AutoSuggest` | 歷史輸入自動預測建議（如 `AutoSuggestFromHistory`）。 |
+| `style` | `Style` / `BaseStyle` | 全域外觀樣式表（透過 `Style.from_dict` 統一定義配色）。 |
+| `key_bindings` | `KeyBindings` | 自訂按鍵規則與快捷鍵攔截器。 |
+| `bottom_toolbar` | `str` / `HTML` / `Callable` | 底部常駐狀態列（支援字串或即時動態重新計算的回呼函式）。 |
+| `rprompt` | `str` / `HTML` | 在提示行最右側對齊顯示的右側提示文字 (Right Prompt)。 |
+| `multiline` | `bool` | 是否允許多行輸入（設為 `True` 時，按 Enter 換行，Esc+Enter 送出）。 |
+| `is_password` | `bool` | 是否隱藏輸入內容（將輸入字元遮蔽為星號）。 |
+| `placeholder` | `str` / `HTML` | 當輸入框為空時，以淡灰色呈現的佔位說明文字。 |
+| `complete_while_typing` | `bool` | 使用者打字時是否主動彈出補全選單（預設為 `False`，需按 Tab 觸發）。 |
+| `enable_history_search` | `bool` | 是否允許使用方向鍵或 Ctrl+R 快捷搜尋過往歷史指令。 |
+| `mouse_support` | `bool` | 是否啟用滑鼠點擊與選單滾動。 |
+| `history` | `History` | **[PromptSession 專屬]** 歷史紀錄儲存策略（如 `FileHistory`，必須在初始化時綁定）。 |
 
 - **回傳值**：
-  - `PromptSession`：會話實例，後續可透過 `.prompt()` 方法來啟動互動。
+  - `PromptSession`：會話實例，後續可多次重複呼叫 `.prompt()` 方法發起互動。
+
+---
+
+#### PromptSession(...) 建構參數 vs session.prompt(...) 調用參數深度對比
+
+在實際開發中，許多參數（如 `completer`、`style`、`is_password`、`bottom_toolbar`）既可以寫在 `PromptSession(...)` 裡，也可以寫在 `session.prompt(...)` 裡。兩者存在關鍵的生命週期與行為差異：
+
+| 比較維度 | `PromptSession(參數=...)` (建構式配置) | `session.prompt(參數=...)` (單次呼叫覆寫) |
+| :--- | :--- | :--- |
+| **設計定位** | **會話級全域預設值 (Session-wide Default)** | **單次提問動態覆寫 (Per-call Override)** |
+| **作用範圍** | 作用於整個 Session 生命週期中的**所有後續呼叫** | 主要針對**當下這一次輸入請求**進行客製化 |
+| **典型場景** | 配置整個 CLI 固定不變的主題、補全清單與快捷鍵 | 某一步需要特殊輸入（如忽然需要輸入密碼、切換臨時提示詞） |
+| **專屬參數** | 支援 `history`、`input`、`output`（底層串流與歷史策略） | 支援 `default`（預填預設文字）、`accept_default`、`pre_run` |
+| **狀態改寫機制** | 被動等待被單次調用覆寫 | **注意：傳入非 None 值會永久改寫 Session 內部對應屬性！** |
+
+> **[核心天條]：session.prompt() 覆寫後具有「狀態黏滯性」！**  
+> `prompt_toolkit` 底層設計中，當你在 `session.prompt(is_password=True)` 傳入某參數時，它不僅影響當前這一次，還會**直接改寫該 Session 實例上的內部屬性**！  
+> - 若下一輪呼叫 `session.prompt()` 且未傳入該參數（預設為 `None`），它**不會還原**為建構時的預設值，而是繼續沿用上一輪被改寫的值！  
+> - **最佳實踐**：若某輪使用了臨時特殊模式（如密碼輸入 `is_password=True`），在下一輪恢復一般輸入時，必須顯式傳入 `session.prompt(is_password=False)` 進行復原。  
+> - 若要臨時清空補全器，傳入 `None` 無法清除（`None` 代表保持當前值），必須顯式傳入 `from prompt_toolkit.completion import DummyCompleter; session.prompt(completer=DummyCompleter())`！
 
 ```python
-...
 from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.styles import Style
 
-# 1. 定義共用樣式表
-my_style = Style.from_dict({
-    'prompt': 'ansigreen bold',
-    'bottom-toolbar': '#333333 bg:#ffffff',
-})
+# 1. 在 PromptSession(...) 中配置全域共享的基礎設定（固定主題、持久歷史、共用補全）
+session = PromptSession(
+    history=FileHistory(".my_app_history"),          # 只能在建構式配置的參數
+    completer=WordCompleter(["help", "status", "login", "exit"]),
+    style=Style.from_dict({
+        "prompt": "ansigreen bold",
+        "bottom-toolbar": "#ffffff bg:#333333",
+    }),
+    bottom_toolbar="[狀態] 正常就緒"
+)
 
-# 2. 一次性綁定設定（包含 style）
-session = PromptSession(style=my_style)
+# 2. 正常輪次：完全不傳參數，自動繼承 PromptSession 的全域配置
+cmd = session.prompt("> ")
 
-while True:
-    # 3. 透過 session 呼叫 prompt，享受保留狀態與統一樣式的好處
-    text = session.prompt('> ')
-    ...
+# 3. 特殊輪次：在 session.prompt(...) 中進行局部臨時覆寫 (例如輸入登入密碼)
+if cmd == "login":
+    # 使用 default 提供可編輯預設值（session.prompt 專屬參數）
+    username = session.prompt("帳號 > ", default="admin")
+    
+    # 局部啟用密碼模式 (覆寫 is_password)
+    password = session.prompt("密碼 > ", is_password=True)
+    
+    # 黏滯性防禦：下一輪若要輸入一般內容，顯式還原 is_password=False
+    next_input = session.prompt("> ", is_password=False)
 ```
 
 ---
@@ -173,25 +216,55 @@ session = PromptSession(auto_suggest=AutoSuggestFromHistory())
 
 ---
 
-##### bottom_toolbar 底部狀態列
+##### PromptSession() 的 bottom_toolbar 參數
 
-- **使用時機**：想在終端機輸入畫面的最底部，常駐顯示一段輔助資訊（如快捷鍵提示、目前模式、系統時間）時使用。
-- **語法**：作為 `prompt(..., bottom_toolbar=...)` 的參數傳入。
+- **使用時機**：當你在 `PromptSession` 互動會話中，需要在終端最底部常駐顯示輔助資訊列（如熱鍵提示、即時字數統計、當前操作模式、Git 分支或時間），且希望隨著使用者打字即時動態更新時使用。
+- **語法**：
+  - 會話初始化綁定：`PromptSession(bottom_toolbar=...)`
+  - 單次提問時動態傳入：`session.prompt(..., bottom_toolbar=...)`
+  - 實例屬性動態賦值：`session.bottom_toolbar = ...`
 - **參數說明**：
-  - `bottom_toolbar`：可接受純字串、`HTML()` 格式化文字物件，或是一個會回傳文字的 `Callable` (函式，用於動態即時更新內容)。
-- **回傳值**：無，純屬視覺渲染設定。
+  - `bottom_toolbar`：支援以下四種型態傳入：
+    - `str`：靜態純文字字串（如 `"[Ctrl+C] 離開"`）。
+    - `HTML`：帶有色彩標籤的格式化文字物件（如 `HTML("<b>狀態：</b><ansigreen>正常</ansigreen>")`）。
+    - `List[Tuple[str, str]]`：由樣式類別名稱與文字組成的元組串列（FormattedText 原生格式）。
+    - `Callable[[], Any]`（核心進階用法）：**無參數的函式或 Lambda**，其回傳值為上述任一種文字格式。終端機在每次使用者按鍵、游標移動或畫面重新渲染時，都會**自動重新執行此函式**以實現即時動態更新！
+- **回傳值**：
+  - 無回傳值，純屬終端視覺渲染參數。
 
 ```python
-...
-from prompt_toolkit import prompt
+import datetime
+from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.styles import Style
 
-# 1. 建立帶有顏色標籤的底部狀態文字
-toolbar_text = HTML(" <b>[Ctrl-Q]</b> 離開 | <b>[Tab]</b> 補全")
+# 1. 定義狀態列樣式表 (底色與內部文字顏色)
+style = Style.from_dict({
+    'bottom-toolbar': '#ffffff bg:#333333',
+    'bottom-toolbar.text': '#aaaaaa',
+    'bottom-toolbar.key': 'bg:#555555 #00eeee bold',
+})
 
-# 2. 傳入 bottom_toolbar 參數
-answer = prompt("請輸入：", bottom_toolbar=toolbar_text)
-...
+session = PromptSession(style=style)
+
+# 2. 定義動態狀態列產生函式 (每次畫面重繪皆會被即時呼叫)
+def get_toolbar():
+    # 直接讀取當前緩衝區的文字內容，實現隨打隨算的即時字數統計
+    char_count = len(session.default_buffer.text)
+    now_str = datetime.datetime.now().strftime("%H:%M:%S")
+    return HTML(
+        f" <b>[時間]</b> {now_str} | "
+        f"<b>[字數]</b> {char_count} | "
+        f"<b>[快捷鍵]</b> [Ctrl-Q] 退出"
+    )
+
+# 3. 綁定給 session (或在 session.prompt 中傳入)
+session.bottom_toolbar = get_toolbar
+
+while True:
+    text = session.prompt("Prompt > ")
+    if text.strip() == "exit":
+        break
 ```
 
 ---
