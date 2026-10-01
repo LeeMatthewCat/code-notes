@@ -44,6 +44,7 @@
 | **[[#KeyBindings() 建立與攔截快捷鍵\|KeyBindings()]]** | **宣告自訂按鍵規則與信號攔截器** | 自訂熱鍵（如 Ctrl+Q 退出、Tab 縮排） |
 | **[[#Buffer 核心文字編輯緩衝區類別\|Buffer]]** | **終端文字輸入與編輯的核心狀態大腦** | 底層文字操作、自訂 UI 控制項、複雜編輯器 |
 | **[[#event.current_buffer 當前作用中緩衝區屬性\|event.current_buffer]]** | **快捷鍵事件中取得目前焦點所在的緩衝區實例** | 熱鍵事件中動態修改文字、移動游標、強制送出 |
+| **[[#session.default_buffer 預設輸入緩衝區屬性\|session.default_buffer]]** | **PromptSession 所持有的主要持久輸入緩衝區實例** | 狀態列動態計算字數、預先掛載變更監聽器、外部檢查文字 |
 | **[[#buffer.text 緩衝區文字字串內容\|buffer.text]]** | **讀取或寫入當前緩衝區的文字純字串** | 檢查輸入內容、程式化設定或清空文字 |
 | **[[#buffer.cursor_position 游標位置索引\|buffer.cursor_position]]** | **讀取或移動目前文字游標在字串中的索引位置** | 控制輸入游標跳轉、精確定位插入點 |
 | **[[#buffer.on_text_changed 文字變更事件勾點\|buffer.on_text_changed]]** | **當緩衝區文字產生任何變更時觸發的事件監聽勾點** | 即時語法檢查、動態字數統計、輸入聯動預覽 |
@@ -413,6 +414,51 @@ def _(event):
     buffer.reset()  # 操作當前作用中的緩衝區
 
 text = prompt("> ", key_bindings=bindings)
+```
+
+---
+
+##### session.default_buffer 預設輸入緩衝區屬性
+
+- **使用時機**：在 `PromptSession` 會話中，需要從「外部（如狀態列回呼函式、背景監聽器、或是主迴圈）」存取使用者主要輸入框的 `Buffer` 物件時使用。
+- **語法**：`session.default_buffer`
+- **屬性型別**：`Buffer` 物件實例（內部名稱為 `'DEFAULT_BUFFER'`）。
+- **核心特點與用途**：
+  - **持久存在**：不同於單次呼叫的 `prompt()` 會在每次執行後銷毀緩衝區，`PromptSession` 的 `default_buffer` 貫穿整個會話生命週期。
+  - **狀態列即時聯動**：在 `bottom_toolbar` 函式中讀取 `session.default_buffer.text` 或其長度，能即時動態呈現打字進度與字數統計。
+  - **預先掛載事件**：可以在會話啟動前，直接對其註冊變更監聽：`session.default_buffer.on_text_changed += my_handler`。
+  - **文檔內省分析 (`document`)**：透過其 `document` 屬性，能提取如 `text_before_cursor`、`get_word_before_cursor()` 等豐富的行內文字上下文。
+
+| 概念維度 | `session.default_buffer` | `event.current_buffer` | `app.current_buffer` |
+| :--- | :--- | :--- | :--- |
+| **持有物件** | `PromptSession` 實例 | `KeyPressEvent` 按鍵事件參數 | `Application` 應用實例 |
+| **取得時機** | 隨時可用（會話外部、回呼函式、主迴圈） | 僅在快捷鍵觸發時於事件常式中取得 | 在全螢幕應用或 UI 元件回呼中取得 |
+| **角色定位** | 命令列輸入會話的「主要輸入框本體」 | 當下接收鍵盤輸入、擁有「焦點」的緩衝區 | 全螢幕多視窗佈局中，當前游標聚焦的視窗緩衝區 |
+
+```python
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import HTML
+
+session = PromptSession()
+
+# 1. 預先掛載文字變更監聽器
+def on_change(buf):
+    # 當使用者輸入時即時監控
+    pass
+
+session.default_buffer.on_text_changed += on_change
+
+# 2. 在動態狀態列中即時讀取 default_buffer 進行統計
+def get_toolbar():
+    # 存取 default_buffer 的純文字與 document 分析物件
+    buf = session.default_buffer
+    char_count = len(buf.text)
+    word_before = buf.document.get_word_before_cursor()
+    return HTML(f" <b>字數:</b> {char_count} | <b>前詞:</b> {word_before}")
+
+session.bottom_toolbar = get_toolbar
+
+text = session.prompt("> ")
 ```
 
 ---
