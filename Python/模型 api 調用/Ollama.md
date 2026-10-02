@@ -167,6 +167,53 @@ else:
 
 ---
 
+##### ollama.show() 查詢特定模型詳細資訊與元數據
+
+- **使用時機**：需要深入檢視特定模型的底層架構參數（如上下文長度 context length、停止詞 stop tokens、Prompt Template 模板）、Modelfile 配置、授權條款或硬體需求時使用。
+- **語法**：`response = ollama.show(model: str)`
+- **參數說明**：
+  - `model`：目標模型名稱標籤（如 `"qwen2.5:7b"` 或 `"llama3:latest"`）。
+- **回傳值**：
+  - `ShowResponse` 物件，包含以下核心屬性：
+
+| 屬性名稱 | 資料型別 | 說明與典型內容 |
+| :--- | :--- | :--- |
+| **`.modelfile`** | `str` | 構建該模型時所使用的完整 `Modelfile` 內容（包含 FROM, TEMPLATE, PARAMETER 等原始定義）。 |
+| **`.parameters`** | `str` | 模型的預設超參數字串清單（例如 `stop "<|im_end|>"`、`temperature 0.7` 等）。 |
+| **`.template`** | `str` | 該模型用於格式化對話提示詞的 Go 語言模板（Prompt Template）。 |
+| **`.system`** | `str` | 模型預設內建的系統提示詞（System Prompt，若有定義）。 |
+| **`.details`** | `ModelDetails` | 包含 `family`, `parameter_size`, `quantization_level`, `format` 等規格物件。 |
+| **`.model_info`**（或 `.modelinfo`） | `dict` | 模型底層 GGUF 鍵值元數據（如架構類型、注意力頭數、上下文視窗大小 `context_length`、詞表大小等硬體細節）。 |
+| **`.modified_at`** | `datetime` | 模型的最後修改時間。 |
+| **`.license`** | `str` | 模型的開源許可條款授權文本。 |
+| **`.capabilities`** | `List[str]` | 模型支援的能力清單（例如 `["tools", "thinking"]` 等，新版支援）。 |
+
+```python
+import ollama
+
+# 1. 查詢特定本地模型的詳細元數據
+info = ollama.show("qwen2.5:7b")
+
+# 2. 檢視模型基礎架構規格
+print("架構系列:", info.details.family)                # 例如: qwen2
+print("參數量級:", info.details.parameter_size)       # 例如: 7.6B
+print("量化等級:", info.details.quantization_level)   # 例如: Q4_K_M
+
+# 3. 讀取底層上下文視窗與超參數
+# model_info 字典內包含 GGUF 原始鍵值 (如 context_length)
+context_len = info.model_info.get("qwen2.context_length", "未知")
+print("上下文視窗長度:", context_len)
+
+# 4. 印出對話模板 (Prompt Template) 前 3 行
+print("對話模板摘要:\n", "\n".join(info.template.splitlines()[:3]))
+```
+
+> **[小提醒]：ollama.list() vs ollama.show() 職責分工**：  
+> - `ollama.list()`：像「圖書館的書本目錄索引」，速度極快，僅列出所有已下載模型的基本清單與磁碟容量。  
+> - `ollama.show("模型名")`：像「翻開特定一本書的版權頁與規格表」，深入解析單一模型的完整超參數、提示詞模板與 GGUF 底層技術元數據。
+
+---
+
 ##### ollama.generate() 單次生成文字
 
 - **使用時機**：當你不需要處理複雜多輪對話歷史，只需要輸入單一 Prompt 提示詞並取得 AI 簡短回答或文本生成時使用。
