@@ -551,25 +551,51 @@ print(f"目前單詞: {current_word}, 位置: 行 {row} 列 {col}")
 
 - **使用時機**：每當使用者輸入字元、刪除字元、剪下貼上，或程式碼動態修改文字時被自動觸發。極常用於即時字數統計、動態語法分析與即時聯動提示。
 - **語法**：
-  - 運算子附加：`session.default_buffer.on_text_changed += 回呼函式`
-  - 運算子移除：`session.default_buffer.on_text_changed -= 回呼函式`
-- **回呼簽名**：`callback(buffer: Buffer) -> None`（接收被修改的 `Buffer` 物件）。
-- **屬性型別**：`Event[Callable[[Buffer], None]]`。
+  - 註冊監聽（掛載）：`session.default_buffer.on_text_changed += 回呼函式`
+  - 註銷監聽（卸載）：`session.default_buffer.on_text_changed -= 回呼函式`
+- **回呼簽名**：`callback(buffer: Buffer) -> None`（接收被修改的 `Buffer` 物件實例作為唯一引數）。
+- **屬性型別**：`Event[Buffer]`（`prompt_toolkit.utils.Event` 事件發布訂閱物件）。
+
+- **掛載語法解析（為什麼是 `+=` 而非 `=`？）**：
+  初次接觸時常會疑惑：為什麼不能寫 `default_buffer.on_text_changed = on_change`？背後有著關鍵的架構考量：
+
+  > **[生動比喻]**：  
+  > - **直接賦值 `=`**：像「直接把學校講台上的廣播主機整台拆掉換成你自己的玩具」，不僅抹殺了系統原本的廣播功能，且整個學校只能有你一個人說話。  
+  > - **運算子 `+=`**：像「在廣播主機的輸出面板上插上一條新的揚聲器訊號線」，原本的廣播系統完好無損，你的喇叭也會在廣播響起時同步播放！且任何人隨時都能插上（`+=`）或拔掉（`-=`）自己的訊號線。
+
+  - **1. 本質是 Event 事件管理器而非普通回呼屬性**：  
+    `on_text_changed` 並不是存放單一函式指標的變數，而是一個由 `prompt_toolkit.utils.Event` 實例化的事件發布器（Event Dispatcher）。它內部專門維護著一個處理函式清單（`self._handlers: list`）。
+  - **2. Python 運算子多載機制 (`__iadd__` 與 `__isub__`)**：  
+    `Event` 類別在底層多載了 Python 的原位加法與原位減法運算子：  
+    - 執行 `event += handler` 時，等同於呼叫底層的 `event.add_handler(handler)`，將函式追加加入監聽清單中。  
+    - 執行 `event -= handler` 時，等同於呼叫底層的 `event.remove_handler(handler)`，將該函式從監聽清單中安全移除。
+  - **3. 多重廣播 (Multicast) 與防覆蓋特性**：  
+    若使用一般的 `=` 賦值，會直接覆蓋摧毀 `Event` 物件本體，導致內建的事件派發邏輯徹底失效。使用 `+=` 可以同時掛載多個完全獨立的監聽函式（例如一個負責即時字數統計、另一個負責語法即時校驗），彼此並存不衝突。
+  - **4. 發送者實例自動注入 (Sender Injection)**：  
+    每當文字發生任何異動，`Event` 在呼叫 `fire()` 時會自動執行 `handler(self.sender)`，將當前發出事件的 `Buffer` 實例本體傳入回呼函式中，因此在 `on_change(buf)` 裡可以直接存取 `buf.text` 與 `buf.cursor_position`。
 
 ```python
 from prompt_toolkit import PromptSession
 
 session = PromptSession()
 
-# 1. 定義文字變動監聽回呼
-def on_change(buf):
-    # 每次打字或刪除時即時讀取最新字數
-    print(f"\n[即時監聽] 當前字數: {len(buf.text)}")
+# 1. 定義第一個監聽回呼：即時字數統計
+def count_listener(buf):
+    print(f"\n[字數統計] 目前文字長度: {len(buf.text)}")
 
-# 2. 動態註冊監聽至 PromptSession 的預設緩衝區
-session.default_buffer.on_text_changed += on_change
+# 2. 定義第二個監聽回呼：即時安全檢查
+def security_listener(buf):
+    if "sudo" in buf.text:
+        print(f"\n[安全警告] 偵測到提權關鍵字！")
 
-text = session.prompt("輸入內容 > ")
+# 3. 使用 += 依序掛載多個獨立監聽器 (多重廣播，彼此不衝突覆蓋)
+session.default_buffer.on_text_changed += count_listener
+session.default_buffer.on_text_changed += security_listener
+
+# 4. 若某階段不再需要特定監聽，使用 -= 即可隨時動態卸載
+# session.default_buffer.on_text_changed -= security_listener
+
+text = session.prompt("輸入指令 > ")
 ```
 
 ---
