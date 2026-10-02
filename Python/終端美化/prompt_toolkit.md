@@ -573,6 +573,14 @@ print(f"目前單詞: {current_word}, 位置: 行 {row} 列 {col}")
     若使用一般的 `=` 賦值，會直接覆蓋摧毀 `Event` 物件本體，導致內建的事件派發邏輯徹底失效。使用 `+=` 可以同時掛載多個完全獨立的監聽函式（例如一個負責即時字數統計、另一個負責語法即時校驗），彼此並存不衝突。
   - **4. 發送者實例自動注入 (Sender Injection)**：  
     每當文字發生任何異動，`Event` 在呼叫 `fire()` 時會自動執行 `handler(self.sender)`，將當前發出事件的 `Buffer` 實例本體傳入回呼函式中，因此在 `on_change(buf)` 裡可以直接存取 `buf.text` 與 `buf.cursor_position`。
+  - **5. 掛載生命週期原則（同一次運行中只需掛載一次）**：  
+    在同一個 `PromptSession` 的生命週期中，**只需在主迴圈外部掛載一次即可**！  
+    因為 `PromptSession` 的 `default_buffer` 是跨輪次持久存活的，且內部 `Event` 是以 Python 串列（`self._handlers.append`）保存回呼函式，**完全不會自動去重**。  
+    若將掛載程式碼寫入 `while True:` 迴圈內部，每一輪迴圈都會再度 `append` 同一個函式，導致使用者打一個字卻連續觸發 2 次、3 次甚至幾十次回呼，引發嚴重的效能雪崩與重複處理。
+
+> **[核心天條]：同一次運行中只需掛載一次！嚴禁寫在 while 迴圈內部造成重複疊加！**  
+> - **[錯誤寫法]**：在 `while True:` 迴圈內部每次呼叫 `prompt()` 前執行 `session.default_buffer.on_text_changed += on_change`。第 10 輪時，每敲一個鍵就會連續執行 10 次回呼！  
+> - **[正確寫法]**：在進入 `while True:` 迴圈之前（Session 初始化後）只掛載「一次」，整個會話全程自動生效。
 
 ```python
 from prompt_toolkit import PromptSession
@@ -588,14 +596,21 @@ def security_listener(buf):
     if "sudo" in buf.text:
         print(f"\n[安全警告] 偵測到提權關鍵字！")
 
-# 3. 使用 += 依序掛載多個獨立監聽器 (多重廣播，彼此不衝突覆蓋)
+# 3. [正確寫法]：在進入互動迴圈前，於外部只掛載「一次」！
+# default_buffer 會在整個 session 生命週期內持續沿用這份監聽清單
 session.default_buffer.on_text_changed += count_listener
 session.default_buffer.on_text_changed += security_listener
 
 # 4. 若某階段不再需要特定監聽，使用 -= 即可隨時動態卸載
 # session.default_buffer.on_text_changed -= security_listener
 
-text = session.prompt("輸入指令 > ")
+# 5. 持續互動的主迴圈
+while True:
+    # [錯誤寫法]：嚴禁在迴圈內寫 session.default_buffer.on_text_changed += ...
+    # 否則每輪迴圈都會重複 append，導致打一個字連續觸發數十次回呼！
+    text = session.prompt("輸入指令 > ")
+    if text.strip() == "exit":
+        break
 ```
 
 ---
