@@ -53,6 +53,19 @@ ollama rm qwen2.5:7b
 
 ---
 
+# 核心 API 類別、函式與屬性字典對照表
+
+| 類別 / 函式 / 屬性名稱 | 主要用途 | 典型適用情境 |
+| :--- | :--- | :--- |
+| **[[#ollama.list() 列出本地已安裝模型清單|ollama.list()]]** | **查詢本地已下載並安裝的所有模型列表** | 啟動時動態列舉可用模型、防呆檢查模型是否已下載 |
+| **[[#ollama.show() 查詢特定模型詳細資訊與元數據|ollama.show()]]** | **獲取單一模型的完整超參數、對話模板與硬體規格元數據** | 檢視 context_length、stop tokens、Prompt Template 語法與硬體配置 |
+| **[[#ollama.generate() 單次生成文字|ollama.generate()]]** | **傳入單次 Prompt 生成純文字回覆** | 單次問答、文字摘要、無須維護對話歷史的文本生成任務 |
+| **[[#ollama.chat() 多輪對話與對話歷史|ollama.chat()]]** | **發送包含角色歷史的訊息串列以進行多輪對話** | 打造對話機器人、上下文連續問答、Tool Use 工具調用 |
+| **[[#串流打字機效果 (stream=True)|stream=True]]** | **開啟串流輸出模式以逐字產生模型輸出** | 即時打字機視覺呈現、降低長文本回答的等待感知延遲 |
+| **[[#結構化 JSON 輸出 (format="json")|format="json"]]** | **強制模型僅以特定 JSON 或 Pydantic Schema 格式輸出** | 資料抽取、API 資料對接、結構化資訊解析 |
+
+---
+
 ## Python 調用 Ollama 的 3 種主流方式
 
 以下詳細介紹如何在 Python 專案中透過官方 SDK、OpenAI 相容介面與標準 HTTP REST 呼叫本地 Ollama。
