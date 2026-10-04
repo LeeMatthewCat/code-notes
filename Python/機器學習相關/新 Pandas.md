@@ -632,6 +632,48 @@ print(df.describe(include="all"))  # 針對字串欄位補充 unique, top, freq
 | 3 | 90 | B |
 | 4 | 100 | B |
 
+**終端輸出結果**：
+
+```text
+# 1. print(df.describe()) 預設僅輸出數值欄位：
+               成績
+count    5.000000
+mean    80.000000
+std     15.811388
+min     60.000000
+25%     70.000000
+50%     80.000000
+75%     90.000000
+max    100.000000
+
+# 2. print(df.describe(include="all")) 納入字串/類別欄位：
+                成績   班級
+count     5.000000    5
+unique         NaN    2
+top            NaN    B
+freq           NaN    3
+mean     80.000000  NaN
+std      15.811388  NaN
+min      60.000000  NaN
+25%      70.000000  NaN
+50%      80.000000  NaN
+75%      90.000000  NaN
+max     100.000000  NaN
+```
+
+> **[輸出指標詳細解析]**：  
+> - **數值型統計指標（針對數值欄位如「成績」）**：  
+>   - `count`：有效非空值筆數（5 筆）。  
+>   - `mean`：算術平均數（$80.0$）。  
+>   - `std`：樣本標準差（自由度 $N-1$，衡量數據離散程度，約 $15.81$）。  
+>   - `min` / `max`：全域最小值（$60.0$）與最大值（$100.0$）。  
+>   - `25%`、`50%`、`75%`：第 1 四分位數（$Q_1=70.0$）、中位數（$Q_2=80.0$）、第 3 四分位數（$Q_3=90.0$）。若 $mean$ 與 $50\%$ 差距懸殊，代表資料存在明顯偏態或離群值。  
+> - **類別型統計指標（針對字串/物件欄位如「班級」）**：  
+>   - `unique`：不重複的相異值數量（共有 `"A"`、`"B"` 兩班，故為 2）。  
+>   - `top`：**眾數**（出現頻率最高的值，此處為出現 3 次的 `"B"` 班）。  
+>   - `freq`：眾數出現的次數（Frequency，`"B"` 班出現了 3 次）。  
+>   - *註：文字欄位無法計算平均值與四分位數，而純數值欄位在全表模式下亦不顯示眾數，不適用的統計量會自動填補為 `NaN`。*
+
 ---
 
 ##### Series.value_counts() 類別值頻率計數
@@ -662,20 +704,86 @@ print(s.value_counts(normalize=True))
 
 ##### Series.unique() 與 Series.nunique() 相異值清單與計數
 
-- **使用時機**：想要列出一個欄位究竟有哪些相異選項，或者統計相異種類總共有幾種時使用。
+- **使用時機**：
+  - `unique()`：想知道某欄位「**究竟有哪些相異選項**」（提取不重複的值清單，如查看有哪些部門、哪些會員等級）。
+  - `nunique()`：想知道某特徵「**總共有幾種相異分類**」（計算基數 Cardinality，如檢查是否適合做 One-Hot 編碼、驗證 ID 是否唯一）。
 - **語法**：
-  - 清單：`s.unique()`
-  - 計數：`s.nunique(dropna=True)`（DataFrame 亦可整表呼叫 `df.nunique()`）
+  - `s.unique()`（僅限 Series，注意 **DataFrame 沒有 `df.unique()` 方法**）
+  - `s.nunique(dropna=True)`（Series 單欄計數）
+  - `df.nunique(axis=0, dropna=True)`（DataFrame 全表批次計數）
+- **參數說明**：
+  - **`s.unique()`**：**無任何參數**。
+    - *特性*：按照**首次出現的順序**排列（不自動排序）；**強制保留空值（NaN / None）**作為獨立元素，無法透過參數過濾。
+  - **`s.nunique(dropna=True)` / `df.nunique(axis=0, dropna=True)`**：
+    - `dropna`（布林值，預設 `True`）：
+      - `dropna=True`（預設）：**排除缺失值**，不將 `NaN` / `None` 計為一種相異種類。
+      - `dropna=False`：**將缺失值視為一種獨立分類**計入總數（總計數會 $+1$）。
+    - `axis`（僅適用於 DataFrame，預設 `0`）：
+      - `axis=0`（或 `'index'`）：垂直向下計算**每一欄（Column）**的相異值總數（回傳 Series，EDA 必備）。
+      - `axis=1`（或 `'columns'`）：水平向右計算每一列（Row）的相異值總數。
 - **回傳值**：
-  - `unique()` 回傳 `numpy.ndarray`；`nunique()` 回傳 `int`（或 DataFrame 的 Series）。
+  - `s.unique()`：回傳 `numpy.ndarray` 一維陣列（若底層為 Category 則回傳 Categorical）。
+  - `s.nunique()`：回傳 Python 原生整數 `int`。
+  - `df.nunique()`：回傳以欄位名稱為索引的 `Series`。
+
+### 核心差異與特性對照表
+
+| 比較項目 | `Series.unique()` | `Series.nunique()` / `df.nunique()` |
+| :--- | :--- | :--- |
+| **回答的核心問題** | 「到底有**哪些**不同的值？」（列出內容） | 「總共有**幾種**不同的值？」（計算個數） |
+| **回傳型別** | `numpy.ndarray`（一維陣列） | `int`（整數）或 `Series`（若整表呼叫） |
+| **支援參數** | **無參數** | `dropna=True`（DataFrame 額外支援 `axis=0`） |
+| **空值 (NaN) 處理** | **一律保留 NaN**，無法過濾 | 預設 `dropna=True` **排除 NaN**；設 `False` 則計為 1 種 |
+| **DataFrame 支援** | **不支援**（無 `df.unique()`） | **支援**（`df.nunique()` 可一次看全表各欄基數） |
+| **排序行為** | 依資料**首次出現的順序**排列（非字母/大小排序） | 不適用（純量計數） |
 
 ```python
 import pandas as pd
 
+# 1. Series 單欄操作
 s = pd.Series(["A", "B", "A", "C", None])
-print(s.unique())   # 輸出: array(['A', 'B', 'C', None], dtype=object)
-print(s.nunique())  # 輸出: 3 (預設排除空值)
+
+# unique() 列出所有相異值（注意必定包含 None）
+print(s.unique())
+# 輸出: ['A' 'B' 'C' None]  (型態為 numpy.ndarray)
+
+# nunique() 預設排除空值 (只算 A, B, C 共 3 種)
+print(s.nunique())
+# 輸出: 3
+
+# nunique(dropna=False) 將空值也視為一種相異分類
+print(s.nunique(dropna=False))
+# 輸出: 4
+
+# 2. DataFrame 全表批次檢視各欄相異值數量 (EDA 與特徵工程利器)
+df = pd.DataFrame({
+    "用戶ID": [101, 102, 103, 104],
+    "城市": ["台北", "台中", "台北", "高雄"],
+    "性別": ["男", "女", "男", None]
+})
+print(df.nunique())
+# 用戶ID    4
+# 城市      3
+# 性別      2  (預設排除 None)
+# dtype: int64
 ```
+
+**`df` 表格結構**：
+
+| Index | 用戶ID | 城市 | 性別 |
+| :---: | :---: | :--- | :--- |
+| 0 | 101 | 台北 | 男 |
+| 1 | 102 | 台中 | 女 |
+| 2 | 103 | 台北 | 男 |
+| 3 | 104 | 高雄 | `NaN` |
+
+> **[實戰避坑與常見天條]**：  
+> 1. **`len(s.unique())` 不等於 `s.nunique()` 陷阱**：  
+>    當欄位內含有缺失值時，`len(s.unique())` 會比 `s.nunique()` 多 1！因為 `unique()` 保留了 `NaN`，而 `nunique()` 預設排除了 `NaN`。若要讓兩者數值吻合，必須顯式傳入 `s.nunique(dropna=False)`。  
+> 2. **DataFrame 沒有 `df.unique()`**：  
+>    Pandas 並沒有實作整表去重的 `df.unique()`，若在 DataFrame 上呼叫會拋出 `AttributeError`。若想對整個表格所有元素去重，請使用 `pd.unique(df.values.ravel())`。  
+> 3. **主鍵唯一性驗證經典寫法**：  
+>    在資料清洗時，若要確認某欄位（如 `user_id`）是否完全無重複且無空值，可使用快速斷言：`df['user_id'].nunique() == len(df)`。
 
 ---
 
