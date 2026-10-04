@@ -814,6 +814,11 @@ print(df.loc["Bob", "成績"])  # 輸出: 90
 
 # 2. 標籤切片 (包含 Charlie！)
 print(df.loc["Alice":"Charlie"])
+# 輸出:
+#          成績
+# Alice    80
+# Bob      90
+# Charlie  85
 ```
 
 **`df` 表格結構**：
