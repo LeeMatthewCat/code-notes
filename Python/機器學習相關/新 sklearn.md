@@ -623,6 +623,8 @@ print(df_scaled.columns.tolist())
 
 預測連續數值型目標變數（房價、銷售額、溫度、耗電量）。
 
+> **[維度通則]**：所有回歸模型均嚴格要求**特徵矩陣 $X$ 為 2D** `(n_samples, n_features)`；而**目標標籤 $y$ 通常為 1D** `(n_samples,)`。推論單筆新資料時，也必須包裹為 2D 矩陣 `(1, n_features)`（如 `[[25, 10]]` 或 `pd.DataFrame(...)`）。
+
 ---
 
 ##### LinearRegression() 標準線性回歸
@@ -810,6 +812,8 @@ print("MLP 訓練迭代完成，最終損失:", round(mlp.loss_, 2))
 # 經典監督式學習模型：分類 (Supervised: Classification)
 
 預測離散類別標籤（是否違約、是否罹病、垃圾郵件判別、圖像類別）。
+
+> **[維度通則]**：所有分類模型均嚴格要求**特徵矩陣 $X$ 為 2D** `(n_samples, n_features)`；而**目標標籤 $y$ 通常為 1D** `(n_samples,)`。若將 $y$ 傳成 2D 欄向量 `(n_samples, 1)`，會觸發 `DataConversionWarning`。
 
 ---
 
@@ -1026,6 +1030,7 @@ print("訓練集評分 (Accuracy):", hgb.score(df[["特徵1", "特徵2"]], df["�
 ##### KMeans() K-Means 分群演算法
 
 - **使用時機**：沒有預先標籤（No Ground Truth）時，希望依照特徵相似度將樣本自動歸納為 $K$ 個群集（Clusters，如客戶分層、行為分群）。
+- **輸入維度限制**：**特徵矩陣 $X$ 強制要求 2D 二維結構** `(n_samples, n_features)`。
 - **數學原理**：隨機指定 $K$ 個初始質心（Centroids），反覆計算所有樣本到質心的歐氏距離，將樣本分派給最近的質心，再重新計算質心座標，直到質心不再移動。
 - **語法**：`KMeans(n_clusters=8, init='k-means++', n_init='auto', max_iter=300, random_state=None)`
 - **核心屬性**：
@@ -1078,6 +1083,7 @@ print("分群質心座標 (Centroids):\n", kmeans.cluster_centers_.round(1))
 ##### PCA() 主成分分析維度縮減
 
 - **使用時機**：全名 Principal Component Analysis。當特徵欄位高達幾十甚至數百維時，不僅面臨「維度災難（Curse of Dimensionality）」，也無法直接以視覺化圖表呈現。PCA 尋找資料變異量最大的正交方向（主成分），將高維特徵投影至低維空間（如 2D 或 3D）。
+- **輸入維度限制**：**特徵矩陣 $X$ 強制要求 2D 二維結構** `(n_samples, n_features)`。
 - **語法**：`PCA(n_components=None, copy=True, whiten=False, random_state=None)`
 - **參數與屬性**：
   - `n_components`：欲保留的主成分數量（整數如 `2` 代表降至 2 維；或小數如 `0.95` 代表保留 95% 累積解釋變異量）。
@@ -1483,3 +1489,13 @@ from sklearn.preprocessing import StandardScaler
 > **[核心天條]：分類資料切割必加 `stratify=y`；不平衡資料評估嚴禁單看 `Accuracy`！**  
 > 1. 切割資料時若未加上 `stratify=y`，罕見類別（如僅佔 1% 的違約用戶）可能整批掉進測試集或訓練集，導致兩邊資料分佈完全不一致。  
 > 2. 在類別不平衡資料中，準確率（Accuracy）是最具欺騙性的指標。請一律以 **`F1-Score`**、**`PR-AUC`** 或 **`ROC-AUC`** 作為模型選型之黃金標準！
+
+---
+
+## 6. 維度錯配陷阱：單欄特徵務必使用雙中括號 df[['col']] 保留 2D
+
+> **[核心天條]：傳入 Transformer 或 Model 的特徵矩陣 $X$，無論有幾個欄位，一律必須是 2D！**  
+> 新手最常寫出 `scaler.fit_transform(df['年齡'])`，因為單中括號會將 Pandas 物件降維為 1D Series，直接觸發 `ValueError: Expected 2D array, got 1D array instead`。  
+> **永遠記住雙中括號口訣**：  
+> - **特徵只有一欄**：`df[['年齡']]`（雙中括號，維持 2D DataFrame）或 `x.values.reshape(-1, 1)`。  
+> - **目標標籤**：`df['標籤']`（單中括號，維持 1D Series）。
