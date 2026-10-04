@@ -234,7 +234,7 @@ print(ts_df.index.day_name())  # 輸出星期名稱清單
 import pandas as pd
 
 # 僅讀取指定欄位並自動解析時間欄位
-# df = pd.read_csv("orders.csv", usecols=["order_id", "date", "amount"], parse_dates=["date"])
+df = pd.read_csv("orders.csv", usecols=["order_id", "date", "amount"], parse_dates=["date"])
 ```
 
 ---
@@ -276,9 +276,9 @@ df.to_csv("students.csv", index=False, encoding="utf-8-sig")
 import pandas as pd
 
 # 讀取名為 '2026_Q3' 的工作表
-# df = pd.read_excel("finance.xlsx", sheet_name="2026_Q3")
+df = pd.read_excel("finance.xlsx", sheet_name="2026_Q3")
 # 匯出為新 Excel 工作表
-# df.to_excel("report.xlsx", sheet_name="清洗結果", index=False)
+df.to_excel("report.xlsx", sheet_name="清洗結果", index=False)
 ```
 
 ---

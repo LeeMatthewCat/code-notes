@@ -3544,6 +3544,165 @@ print(next(gen))
 
 ---
 
+## 非同步編程 async / await 與協程 (Coroutine)
+
+在處理高併發網路請求、API 調用、資料庫查詢或檔案讀寫（I/O 密集型任務）時，傳統同步程式碼會阻塞整個執行緒，浪費寶貴的 CPU 等待時間。
+
+Python 透過 `async` 與 `await` 語法提供原生協程（Coroutine）支援，採用**單執行緒事件迴圈 (Event Loop)** 機制，在 I/O 等待期間主動讓出控制權，實現極高效率的非同步併發處理。
+
+> **生動白話比喻**：  
+> - **同步 (Sync)**：像只有一個廚師的餐廳，廚師把牛排煎下去後，就**站在平底鍋前發呆 5 分鐘**，等牛排煎好了才去烤麵包。  
+> - **非同步 (Async)**：廚師把牛排煎下去（等待 I/O），按下計時器後**立刻轉身去烤麵包、煮濃湯**；計時器響了（I/O 完成）再回頭翻面！
+
+---
+
+### async def 宣告非同步協程函式
+
+- **使用時機**：定義需要執行非同步操作、網路請求或允許暫停讓出 CPU 的協程函式。
+- **語法**：
+  ```python
+  async def coroutine_name(param: Type) -> ReturnType:
+      ...
+  ```
+- **核心特性**：
+  - 呼叫 `async def` 函式時，**不會立即執行函式內部代碼**，而是回傳一個未啟動的 **`Coroutine`（協程物件）**。
+  - 必須透過 `await` 呼叫、交給 `asyncio.run()` 啟動，或包裝為 `asyncio.create_task()` 進入事件迴圈排程執行。
+
+```python
+import asyncio
+
+# 1. 使用 async def 定義非同步函式
+async def fetch_data(task_id: int) -> str:
+    print(f"[任務 {task_id}] 開始下載資料...")
+    # 模擬非同步 I/O 等待 1 秒 (主動讓出控制權)
+    await asyncio.sleep(1)
+    print(f"[任務 {task_id}] 下載完成！")
+    return f"資料內容_{task_id}"
+
+# 2. 正確啟動協程：透過 asyncio.run 進入事件迴圈
+async def main():
+    result = await fetch_data(1)
+    print(f"最終回傳: {result}")
+
+asyncio.run(main())
+```
+
+---
+
+### await 等待非同步結果並讓出控制權
+
+- **使用時機**：在 `async def` 協程內部，等待另一個協程（或支援 `__await__` 的 Awaitable 物件）完成運算，同時**將執行緒控制權暫時交還給事件迴圈**，讓其他任務可以穿插執行。
+- **語法**：`result = await awaitable_object`
+- **使用限制**：
+  - **`await` 只能出現在 `async def` 函式內部**，在普通同步函式中使用會引發 `SyntaxError` 語法錯誤！
+  - 被 `await` 的對象必須是 **可等待物件 (Awaitable)**（例如協程 Coroutine、Task、Future）。
+
+```python
+import asyncio
+
+async def query_ai_model(model_name: str, delay: float) -> str:
+    print(f"發起模型呼叫: {model_name}")
+    await asyncio.sleep(delay)
+    return f"{model_name} 回應完成"
+
+async def main():
+    # 依序等待 (循序執行)
+    res1 = await query_ai_model("Gemini-Flash", 0.5)
+    res2 = await query_ai_model("Claude-Sonnet", 0.8)
+    print(res1)
+    print(res2)
+
+    # 併發執行多個任務 (Gather)：同時發起等待
+    results = await asyncio.gather(
+        query_ai_model("模型 A", 1.0),
+        query_ai_model("模型 B", 1.0)
+    )
+    print("併發結果:", results)
+
+asyncio.run(main())
+```
+
+---
+
+### async with 非同步上下文管理器
+
+- **使用時機**：在非同步環境中需要安全開啟與釋放資源（如非同步 HTTP Client 連線階段、非同步資料庫連線池、非同步鎖 `asyncio.Lock`）時使用。
+- **語法**：
+  ```python
+  async with 非同步上下文管理器物件 as 變數:
+      動作...
+  ```
+- **底層運作協定**：
+  - 進入區塊時：自動觸發呼叫 `await 物件.__aenter__()`，其回傳值會指派給 `as` 後方的變數。
+  - 離開區塊時：無論正常結束或拋出例外，皆會自動觸發呼叫 `await 物件.__aexit__(exc_type, exc_val, exc_tb)`，安全回收網路連線或鎖。
+
+```python
+import asyncio
+
+# 1. 自訂非同步上下文管理器類別
+class AsyncDatabaseConnection:
+    def __init__(self, db_url: str):
+        self.db_url = db_url
+
+    async def __aenter__(self):
+        print(f"[連線池] 正在建立連線至: {self.db_url}...")
+        await asyncio.sleep(0.5)
+        print("[連線池] 連線成功建立！")
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        print("[連線池] 正在安全關閉連線並釋放資源...")
+        await asyncio.sleep(0.2)
+        print("[連線池] 連線池已安全關閉。")
+
+    async def query(self, sql: str) -> str:
+        await asyncio.sleep(0.3)
+        return f"查詢結果 [{sql}]"
+
+# 2. 透過 async with 安全管理連線生命週期
+async def main():
+    async with AsyncDatabaseConnection("postgres://localhost:5432/main") as db:
+        data = await db.query("SELECT * FROM users")
+        print(f"處理資料: {data}")
+    # 離開 async with 區塊後，連線自動釋放完成！
+
+asyncio.run(main())
+```
+
+---
+
+### async for 非同步迭代器
+
+- **使用時機**：從需要非同步等待的資料來源（如 AI 模型串流輸出 Streaming、非同步訊息佇列、網路 Socket 資料流）逐筆讀取資料時使用。
+- **語法**：
+  ```python
+  async for item in 非同步可迭代物件:
+      動作...
+  ```
+- **底層運作協定**：
+  - 每次迴圈迭代時，底層會呼叫 `await iterator.__anext__()`，若無資料可讀則拋出 `StopAsyncIteration` 結束迴圈。
+
+```python
+import asyncio
+
+# 模擬 AI 串流打字機輸出生成器
+async def stream_ai_tokens():
+    tokens = ["人工智慧", "正在", "以極高速度", "改變世界。"]
+    for token in tokens:
+        await asyncio.sleep(0.3)  # 模擬非同步網路傳輸延遲
+        yield token
+
+async def main():
+    print("AI 即時回覆: ", end="", flush=True)
+    async for chunk in stream_ai_tokens():
+        print(chunk, end="", flush=True)
+    print()
+
+asyncio.run(main())
+```
+
+---
+
 ## 內建函數
 
 | 分類 | 函數名稱 | 功能 | 簡單範例 |
