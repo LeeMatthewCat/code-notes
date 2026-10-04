@@ -45,6 +45,7 @@ pip install questionary
 | **[[#questionary.Choice 與 questionary.Separator\|questionary.Choice]]** | **自訂選項標籤、真值與預設勾選狀態** | 分離「顯示名稱」與「程式內部回傳值」 |
 | **[[#questionary.Choice 與 questionary.Separator\|questionary.Separator]]** | **在選項清單中插入視覺分割線** | 選單分類美化、分隔不同群組選項 |
 | **[[#questionary.Style 主題樣式美化 (整合 prompt_toolkit.styles.Style)\|questionary.Style]]** | **自訂問答組件的顏色與樣式** | 打造符合品牌色系或 Rich 風格的終端主題 |
+| **[[#Question 物件與底層 q.application.layout 架構延伸\|Question 與 q.application.layout]]** | **提示問題底層應用程式與佈局階層物件** | 動態攔截自訂快捷鍵 (如 Ctrl+O)、深入提取底層 InquirerControl |
 | **[[#questionary.prompts.common.InquirerControl 選單控制項核心類別\|InquirerControl]]** | **選單底層狀態控制與佈局核心類別** | 深入自訂選單控制項、動態選項搜尋、控制選項指針焦點 |
 
 ---
@@ -295,6 +296,97 @@ deploy_target = questionary.select(
 
 # 使用者看見的是中文標題，但變數拿到的會是 'env_local'、'env_prod'！
 print(f"部署環境代碼: {deploy_target}")
+```
+
+---
+
+##### Question 物件與底層 q.application.layout 架構延伸
+
+- **使用時機**：
+  - 當呼叫 `questionary.select()`、`text()` 等函式且**尚未執行 `.ask()`** 時，回傳的是一個 `Question` 物件（例如 `q = questionary.select(...)`）。
+  - 需要在提問執行前攔截底層、動態注入自訂快捷鍵（如 `Ctrl+O` 預覽圖片）、監聽輸入事件，或是透過佈局內省提取內部的 `InquirerControl` 控制項時使用。
+- **語法與階層路徑**：
+  - 提示問題物件：`q = questionary.select(...)`
+  - 底層最高應用程式實例：`q.application`（即 [[prompt_toolkit#Application 應用程式實例與全螢幕生命週期|prompt_toolkit.Application]]）
+  - 佈局大腦：`q.application.layout`（即 [[prompt_toolkit#佈局與視窗控制核心 (Layout & UI Hierarchy)|prompt_toolkit.layout.Layout]]）
+  - 遍歷所有控制項：`q.application.layout.find_all_controls()`（即 [[prompt_toolkit#layout.find_all_controls() 遍歷佈局中所有 UI 控制項|layout.find_all_controls()]]）
+  - 提取底層選單控制器：
+    ```python
+    from questionary.prompts.common import InquirerControl
+
+    # 走訪佈局取得底層 InquirerControl
+    ic = next(c for c in q.application.layout.find_all_controls() if isinstance(c, InquirerControl))
+    ```
+
+#### 核心階層展開架構圖
+
+```text
+  q (questionary.Question 提示器物件，尚未呼叫 .ask())
+   │
+   └── q.application (prompt_toolkit.application.Application 總指揮官)
+        │
+        ├── q.application.key_bindings (全域按鍵攔截器，可動態擴充自訂熱鍵)
+        │
+        └── q.application.layout (prompt_toolkit.layout.Layout 佈局大腦)
+             │
+             ├── layout.find_all_windows() (走訪所有視窗邊界容器 Window)
+             │
+             └── layout.find_all_controls() (走訪所有內部承載的控制項 UIControl)
+                  │
+                  ├── BufferControl (若為文字輸入題 text()，承載輸入文字與游標)
+                  │
+                  └── InquirerControl (若為選單題 select() / checkbox()，承載選項指針與渲染)
+```
+
+- **核心成員屬性與方法說明**：
+
+| 屬性 / 方法路徑 | 所屬型別 / 回傳型別 | 說明與用途 |
+| :--- | :--- | :--- |
+| **`q.application`** | `Application` | 取得此問題底層所封裝的 `prompt_toolkit.Application` 執行個體。 |
+| **`q.application.layout`** | `Layout` | 取得管理該問題所有視窗元件與容器的 `Layout` 佈局管理器。 |
+| **`q.application.layout.find_all_controls()`** | `Iterable[UIControl]` | 走訪此問題畫面佈局樹狀結構中所有的 `UIControl` 控制項。 |
+| **`q.application.key_bindings`** | `KeyBindings` | 取得此問題的按鍵綁定清單，可在啟動前透過 `@q.application.key_bindings.add(...)` 註冊額外快捷鍵。 |
+| **`q.ask()` / `q.ask_async()`** | `Any` / `Coroutine` | 同步阻塞或非同步啟動 `q.application.run()`，進入互動事件迴圈。 |
+
+```python
+import questionary
+from prompt_toolkit.styles import Style
+from questionary.prompts.common import InquirerControl
+
+attached_images = [
+    "avatar_2026.png",
+    "banner_desktop.jpg",
+    "screenshot_error.png"
+]
+
+# 1. 建立選單問題實例 (注意此處尚未呼叫 .ask())
+q = questionary.select(
+    message="選擇圖片：",
+    choices=attached_images,
+    instruction="(Enter: 刪除, Ctrl+O: 開啟圖片)",
+    style=Style([
+        ("question", "dim"),
+        ("instruction", "dim")
+    ])
+)
+
+# 2. 透過 q.application.layout.find_all_controls() 深度提取底層 InquirerControl
+ic = next(
+    c for c in q.application.layout.find_all_controls()
+    if isinstance(c, InquirerControl)
+)
+
+# 3. 透過 q.application.key_bindings 動態注入專屬自訂快捷鍵 (例如 Ctrl+O 開啟圖片)
+@q.application.key_bindings.add("c-o")
+def _open_image(event):
+    # 透過剛剛取得的 ic 控制項，即時查詢使用者目前指針停駐的圖片名稱
+    current_selected = ic.get_pointed_at().value
+    print(f"\n[系統] 正在預覽檢視圖片: {current_selected}")
+    # 執行完畢後重繪畫面，不中斷選單互動
+    event.app.invalidate()
+
+# 4. 啟動互動選單
+# selected_image = q.ask()
 ```
 
 ---
