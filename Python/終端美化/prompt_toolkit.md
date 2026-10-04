@@ -829,6 +829,7 @@ print(f"程式結束回傳: {exit_result}")
 - **`Window`**：負責「外觀幾何」與「尺寸限制」（寬度、高度、邊框、是否隱藏游標）。
 - **`UIControl`**：負責「內部內容」與「使用者互動」（繪製文字 Token、接收滑鼠點擊、快取文字）。
 - **`layout.find_all_controls()` 的底層實作**：內部即是走訪 `layout.find_all_windows()`，並依次取出各個 `window.content`。
+- **第三方庫延伸（如 Questionary）**：例如在 [[Questionary#questionary.prompts.common.InquirerControl 選單控制項核心類別|Questionary 的 InquirerControl]] 中，就是繼承自 `FormattedTextControl`，因此透過 `layout.find_all_controls()` 即可直接遍歷並提取出該選單控制器。
 
 ---
 
