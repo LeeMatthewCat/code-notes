@@ -53,6 +53,7 @@
 | **[[#default_buffer.insert_text() 在游標處插入文字\|default_buffer.insert_text()]]** | **在當前游標所在位置精確插入一段文字字串** | 快捷鍵插入文字範本、自動補齊引號括號 |
 | **[[#default_buffer.validate_and_handle() 驗證並提交內容\|default_buffer.validate_and_handle()]]** | **立即觸發校驗器並程式化模擬按下 Enter 送出** | 快捷鍵強制送出、多行編輯中的快捷提交 |
 | **[[#default_buffer.reset() 清空並重置緩衝區\|default_buffer.reset()]]** | **清空文字內容、歸零游標並重置歷史還原棧** | Esc 鍵清空輸入、會話輪次手動重設 |
+| **[[#Application 應用程式實例與全螢幕生命週期\|Application]]** | **prompt_toolkit 最高執行實例與事件迴圈指揮官** | 全螢幕 TUI 應用、多視窗儀表板、非文字輸入互動介面 |
 | **[[#layout.find_all_controls() 遍歷佈局中所有 UI 控制項\|layout.find_all_controls()]]** | **搜尋並遍歷當前佈局樹狀結構中所有的 UI 控制項** | 走訪所有輸入緩衝區或格式化文字控制項、動態巡檢 |
 | **[[#layout.find_all_windows() 遍歷佈局中所有視窗容器\|layout.find_all_windows()]]** | **搜尋並產生當前佈局中所有的 Window 視窗實體** | 檢查各視窗幾何尺寸維度、批次設定視窗屬性 |
 | **[[#layout.focus() 與 layout.has_focus() 焦點切換與檢查\|layout.focus() / layout.has_focus()]]** | **切換鍵盤操作焦點至特定控制項或檢查焦點狀態** | 多視窗多輸入框切換、根據目前焦點動態啟用快捷鍵 |
@@ -711,50 +712,101 @@ def _(event):
 
 ---
 
+# 應用程式生命週期與最高指揮官 (Application)
+
+在 `prompt_toolkit` 的架構體系中，**`Application`** 是整個系統的心臟與最高指揮官。
+
+無論是高階封裝的 `prompt()` 函式、`PromptSession` 會話管理類別，或是像 `questionary` 這樣的第三方互動庫，其底層都是透過建立並驅動一個 `Application` 實例來運作。
+
+#### 核心架構定位與角色職責
+
+```text
+  Application (最高指揮官 / 事件循環大腦)
+       │
+       ├── Layout (佈局樹狀結構：HSplit / VSplit / Window / UIControl)
+       ├── KeyBindings (全域按鍵攔截規則)
+       ├── Style (全域配色樣式表)
+       ├── Clipboard (終端剪貼簿管理)
+       └── Input / Output (跨平台終端輸入監聽與 ANSI 渲染輸出)
+```
+
+- **事件迴圈掌控者**：負責監聽使用者的鍵盤敲擊、滑鼠點擊、終端視窗尺寸調整（Resize），並排程執行背景任務。
+- **畫面重繪指揮官**：當緩衝區文字變更或游標移動時，發起渲染管道（Render Pipeline）重新繪製終端畫面。
+- **全螢幕與輸入模式**：管理終端是否進入 Alternate Screen（全螢幕緩衝區，結束後還原終端）以及是否啟用滑鼠事件。
+
+---
+
+##### Application 應用程式實例與全螢幕生命週期
+
+- **使用時機**：
+  - 需要開發多視窗、非文字輸入框為主的自訂互動工具（如選單、儀表板、全螢幕文字編輯器、終端儀表盤）。
+  - 需要深度客製化事件迴圈、非同步生命週期或全螢幕終端介面時使用。
+- **語法**：
+  ```python
+  from prompt_toolkit.application import Application
+
+  app = Application(
+      layout=layout,
+      key_bindings=key_bindings,
+      style=style,
+      full_screen=False,
+      mouse_support=False,
+      color_depth=None,
+  )
+  ```
+- **核心參數說明**：
+
+| 參數名稱 | 資料型別 | 預設值 | 說明與作用 |
+| :--- | :--- | :--- | :--- |
+| **`layout`** | `Layout` | *(必填)* | 傳入佈局樹狀結構大腦，定義視窗與控制項的組織階層。 |
+| **`key_bindings`** | `KeyBindings \| None` | `None` | 全域快捷鍵攔截規則清單。 |
+| **`style`** | `BaseStyle \| None` | `None` | 全域配色樣式表實例（例如 `Style.from_dict(...)`）。 |
+| **`full_screen`** | `bool` | `False` | 是否開啟全螢幕模式（Alternate Screen）。設為 `True` 時佔滿終端畫面，離開後還原原本的命令列歷史。 |
+| **`mouse_support`** | `bool` | `False` | 是否啟用終端滑鼠事件監聽（如滾輪滾動、點擊聚焦）。 |
+| **`color_depth`** | `ColorDepth \| None` | `None` | 強制指定終端色彩深度（如 True Color 24-bit 或 256 色）。 |
+
+- **生命週期核心方法**：
+
+| 方法名稱 | 語法 | 說明與用途 |
+| :--- | :--- | :--- |
+| **`run()`** | `app.run()` | 同步阻塞啟動應用程式並進入事件迴圈，直到呼叫 `exit()` 為止。 |
+| **`run_async()`** | `await app.run_async()` | 原生非同步模式啟動事件迴圈，與 `asyncio` 協程無縫整合。 |
+| **`exit()`** | `app.exit(result=None)` | 終止應用程式事件迴圈退出運行，並可選擇回傳結果物件。 |
+| **`invalidate()`** | `app.invalidate()` | 程式化強制排程重繪目前終端畫面。 |
+
+```python
+from prompt_toolkit.application import Application
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.layout import Layout
+
+# 1. 建立快捷鍵清單：按 q 退出應用程式
+kb = KeyBindings()
+
+@kb.add("q")
+def _(event):
+    # 呼叫 event.app.exit() 終止 Application 事件迴圈
+    event.app.exit(result="已安全離開全螢幕應用")
+
+# 2. 定義 UI 控制項與視窗容器
+control = FormattedTextControl(text="這是由 Application 驅動的全螢幕程式！按 q 退出。")
+window = Window(content=control)
+layout = Layout(window)
+
+# 3. 實例化 Application 並以全螢幕模式啟動
+app = Application(layout=layout, key_bindings=kb, full_screen=True)
+
+# 4. 同步阻塞運行
+exit_result = app.run()
+print(f"程式結束回傳: {exit_result}")
+```
+
+---
+
 # 佈局與視窗控制核心 (Layout & UI Hierarchy)
 
 在 `prompt_toolkit` 的全螢幕或多視窗互動應用中，所有呈現於終端的視覺元件都組織在一棵階層樹狀結構中。
-
-最外層由 **`Layout`** 管理，其內部包含容器（如 `HSplit`、`VSplit`）、視窗（`Window`）以及真正承載內容與事件的 **`UIControl`（控制項）**。
-
----
-
-##### layout.find_all_controls() 遍歷佈局中所有 UI 控制項
-
-- **使用時機**：在應用程式初始化、快捷鍵回呼、動態更新或排查除錯時，需要搜尋、檢查或過濾目前畫面佈局樹狀結構中所有的 `UIControl` 控制項（例如尋找所有的 `BufferControl` 或 `FormattedTextControl`）。
-- **語法**：`layout.find_all_controls()`
-- **呼叫途徑**：
-  - 透過 `Application` 實例：`app.layout.find_all_controls()`
-  - 透過事件參數：`event.app.layout.find_all_controls()`
-  - 透過 `PromptSession` 實例：`session.layout.find_all_controls()`
-- **參數說明**：
-  - 無須傳入參數。
-- **回傳值**：
-  - `Iterable[UIControl]`：可迭代的控制項生成器，每次產生一個 `UIControl` 物件（如 `BufferControl`、`FormattedTextControl` 等）。
-
----
-
-##### layout.find_all_windows() 遍歷佈局中所有視窗容器
-
-- **使用時機**：需要搜尋佈局中所有的 `Window` 視窗實體時使用（例如批次調整視窗尺寸、檢查可見度或設定 `always_hide_cursor`）。
-- **語法**：`layout.find_all_windows()`
-- **回傳值**：
-  - `Generator[Window, None, None]`：生成器，產生佈局中所有 `Window` 實例。
-
----
-
-##### layout.focus() 與 layout.has_focus() 焦點切換與檢查
-
-- **使用時機**：在多視窗/多輸入框終端介面中，透過程式碼主動將鍵盤焦點切換到特定控制項、緩衝區或視窗，或檢查當前是否聚焦。
-- **語法**：
-  - 切換焦點：`layout.focus(value)`
-  - 檢查焦點：`layout.has_focus(value)`
-- **參數說明**：
-  - `value`：可傳入 `UIControl` 實例、`Buffer` 實例、緩衝區名稱字串（如 `'DEFAULT_BUFFER'`）、`Window` 實例或任意容器物件。
-- **回傳值**：
-  - `focus()` 回傳 `None`；`has_focus()` 回傳 `bool`。
-
----
 
 #### 核心架構階層關係：Layout、Window 與 UIControl
 
@@ -776,7 +828,22 @@ def _(event):
 
 - **`Window`**：負責「外觀幾何」與「尺寸限制」（寬度、高度、邊框、是否隱藏游標）。
 - **`UIControl`**：負責「內部內容」與「使用者互動」（繪製文字 Token、接收滑鼠點擊、快取文字）。
-- **`layout.find_all_controls()` 的底層實作**：內部即是走訪 `layout.find_all_windows()`，並依次取出各個 `window.content`！
+- **`layout.find_all_controls()` 的底層實作**：內部即是走訪 `layout.find_all_windows()`，並依次取出各個 `window.content`。
+
+---
+
+##### layout.find_all_controls() 遍歷佈局中所有 UI 控制項
+
+- **使用時機**：在應用程式初始化、快捷鍵回呼、動態更新或排查除錯時，需要搜尋、檢查或過濾目前畫面佈局樹狀結構中所有的 `UIControl` 控制項（例如尋找所有的 `BufferControl` 或 `FormattedTextControl`）。
+- **語法**：`layout.find_all_controls()`
+- **呼叫途徑**：
+  - 透過 `Application` 實例：`app.layout.find_all_controls()`
+  - 透過事件參數：`event.app.layout.find_all_controls()`
+  - 透過 `PromptSession` 實例：`session.layout.find_all_controls()`
+- **參數說明**：
+  - 無須傳入參數。
+- **回傳值**：
+  - `Iterable[UIControl]`：可迭代的控制項生成器，每次產生一個 `UIControl` 物件（如 `BufferControl`、`FormattedTextControl` 等）。
 
 ```python
 from prompt_toolkit import PromptSession
@@ -784,19 +851,69 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
 session = PromptSession()
 
-# 1. 遍歷當前會話佈局中的所有控制項
+# 遍歷當前會話佈局中的所有控制項
 for control in session.layout.find_all_controls():
     if isinstance(control, BufferControl):
-        # 找到文字編輯緩衝區控制項 (例如預設輸入框 'DEFAULT_BUFFER')
+        # 找到文字編輯緩衝區控制項 (例如預設輸入框 "DEFAULT_BUFFER")
         print(f"找到緩衝區控制項: {control.buffer.name}")
     elif isinstance(control, FormattedTextControl):
-        # 找到格式化文字控制項 (如狀態列或選單)
+        # 找到格式化文字控制項 (如狀態列或靜態提示)
         print("找到格式化文字控制項")
+```
 
-# 2. 透過名稱將鍵盤焦點切換至指定緩衝區
-# session.layout.focus("DEFAULT_BUFFER")
+---
 
-# 3. 檢查目前焦點是否停留在預設輸入框
+##### layout.find_all_windows() 遍歷佈局中所有視窗容器
+
+- **使用時機**：需要搜尋佈局中所有的 `Window` 視窗實體時使用（例如批次調整視窗尺寸、檢查可見度或設定 `always_hide_cursor`）。
+- **語法**：`layout.find_all_windows()`
+- **呼叫途徑**：
+  - 透過 `Application` 實例：`app.layout.find_all_windows()`
+  - 透過事件參數：`event.app.layout.find_all_windows()`
+  - 透過 `PromptSession` 實例：`session.layout.find_all_windows()`
+- **參數說明**：
+  - 無須傳入參數。
+- **回傳值**：
+  - `Generator[Window, None, None]`：生成器，產生佈局中所有 `Window` 實例。
+
+```python
+from prompt_toolkit import PromptSession
+
+session = PromptSession()
+
+# 遍歷當前佈局樹狀結構中所有可視視窗容器
+for window in session.layout.find_all_windows():
+    # 檢查視窗是否掛載了特定控制項內容
+    content = window.content
+    print(f"視窗內容控制項型態: {type(content).__name__}")
+```
+
+---
+
+##### layout.focus() 與 layout.has_focus() 焦點切換與檢查
+
+- **使用時機**：在多視窗/多輸入框終端介面中，透過程式碼主動將鍵盤焦點切換到特定控制項、緩衝區或視窗，或檢查當前是否聚焦。
+- **語法**：
+  - 切換焦點：`layout.focus(value)`
+  - 檢查焦點：`layout.has_focus(value)`
+- **呼叫途徑**：
+  - 透過 `Application` 實例：`app.layout.focus(...)`
+  - 透過事件參數：`event.app.layout.focus(...)`
+  - 透過 `PromptSession` 實例：`session.layout.focus(...)`
+- **參數說明**：
+  - `value`：可傳入 `UIControl` 實例、`Buffer` 實例、緩衝區名稱字串（如 `"DEFAULT_BUFFER"`）、`Window` 實例或任意容器物件。
+- **回傳值**：
+  - `focus()` 回傳 `None`；`has_focus()` 回傳 `bool`。
+
+```python
+from prompt_toolkit import PromptSession
+
+session = PromptSession()
+
+# 1. 透過緩衝區名稱將鍵盤操作焦點切換至預設輸入框
+session.layout.focus("DEFAULT_BUFFER")
+
+# 2. 檢查目前焦點是否停留在預設輸入框
 is_focused = session.layout.has_focus("DEFAULT_BUFFER")
 print(f"預設輸入框是否擁有焦點: {is_focused}")
 ```

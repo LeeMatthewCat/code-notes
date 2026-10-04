@@ -351,10 +351,11 @@ print(f"部署環境代碼: {deploy_target}")
 | **`ic.add_search_character(char)`** | `None` | 向搜尋過濾器追加字元並即時更新匹配清單。 |
 
 - **底層運作原理與佈局整合 (`create_inquirer_layout`)**：
-  在 `questionary` 內部，`InquirerControl` 作為 `prompt_toolkit` 的 UI 控制核心，會被包裝進 `create_inquirer_layout(ic, get_prompt_tokens)` 中：
+  在 `questionary` 內部，`InquirerControl` 作為 `prompt_toolkit` 的 UI 控制核心，會被包裝進 `create_inquirer_layout(ic, get_prompt_tokens)` 中，最後由最高指揮官 [[prompt_toolkit#Application 應用程式實例與全螢幕生命週期|Application]] 實例負責事件監聽與畫面渲染：
   1. **提示詞視窗**：透過 `PromptSession` 渲染題目字串 (`get_prompt_tokens`)。
   2. **選單清單視窗**：將 `InquirerControl` 置於 `Window(ic)` 中，未送出時持續渲染所有選項 Token（游標符號、高亮樣式、快捷鍵標籤）。
   3. **搜尋列與驗證列**：若有輸入搜尋過濾字串或即時驗證錯誤，以條件式容器 (`ConditionalContainer`) 動態懸浮展示在下方。
+  4. **事件循環與退出**：最後建立 [[prompt_toolkit#Application 應用程式實例與全螢幕生命週期|Application(layout=layout, key_bindings=bindings)]] 實例，在按下 Enter 時透過 `event.app.exit(result=...)` 終止事件迴圈並回傳使用者選擇。
 
 ```python
 from prompt_toolkit.application import Application
