@@ -161,7 +161,6 @@ print(f"訓練集形狀: {X_train.shape}, 測試集形狀: {X_test.shape}")
 ##### fit_transform() 特徵轉換核心機制與訓練測試集邊界
 
 - **使用時機**：在對**訓練集（$X_{train}$）**進行特徵縮放（Scaling）、類別編碼（Encoding）、缺失值填補（Imputing）或降維（PCA）時，一鍵同時完成「統計學習」與「矩陣轉換」。
-> 這裡的學習，指的是，先計算出公式裡縮需要的值，可能是平均值、最大值等。
 - **三者本質定義與職責分工**：
   1. **`fit(X)`（只學不轉）**：
      - 從輸入資料中統計計算並記錄內部轉換參數（例如：`StandardScaler` 計算平均值 $\mu$ 與標準差 $\sigma$；`OneHotEncoder` 記憶類別字典；`SimpleImputer` 計算中位數）。
