@@ -48,6 +48,41 @@ Scikit-learn 最偉大的設計在於其優雅且一致的物件導向介面規�
 
 ---
 
+## 維度鐵律：特徵矩陣 2D vs 目標標籤 1D 的核心規則
+
+Scikit-learn 對傳入資料的「陣列維度階數（Shape）」有著極為嚴格且一致的鐵律，也是新手最常踩到 `ValueError` 報錯的痛點：
+
+```text
+ 特徵矩陣 X (所有轉換器與模型：強制 2D)         目標標籤 y (監督式模型答案：通常 1D)
+ ┌──────────────┬──────────────┬──────────────┐       ┌──────────────┐
+ │  特徵欄位 0  │  特徵欄位 1  │  特徵欄位 2  │       │   標籤答案   │
+ ├──────────────┼──────────────┼──────────────┤       ├──────────────┤
+ │  樣本 row 0  │  樣本 row 0  │  樣本 row 0  │       │  樣本 row 0  │
+ ├──────────────┼──────────────┼──────────────┤       ├──────────────┤
+ │  樣本 row 1  │  樣本 row 1  │  樣本 row 1  │       │  樣本 row 1  │
+ └──────────────┴──────────────┴──────────────┘       └──────────────┘
+  形狀 Shape: (n_samples, n_features)                  形狀 Shape: (n_samples,)
+```
+
+1. **特徵矩陣 $X$（所有 Transformer 與 Estimator 的特徵輸入）：強制要求 2D 二維結構**
+   - **為什麼？**：Scikit-learn 的轉換器與模型在設計上預設支援「多個特徵欄位」。即使你的資料「只有 1 個特徵欄位」，它的形狀也必須是 `(樣本數, 1)`（二維表格），絕對不能是一維向量 `(樣本數,)`！
+   - **常見陷阱與 Pandas 雙中括號解法**：
+     - `df["年齡"]`（單括號）$\to$ 回傳 **1D Series**（形狀為 `(n,)`），傳入 `scaler` 或 `model` 會**立即報錯崩潰**：  
+       `ValueError: Expected 2D array, got 1D array instead: array=[...]. Reshape your data either using array.reshape(-1, 1)...`
+     - `df[["年齡"]]`（**雙中括號，推薦！**）$\to$ 回傳 **2D DataFrame**（形狀為 `(n, 1)`），直接完美相容！
+     - 若使用 NumPy，必須手動呼叫 `x.reshape(-1, 1)` 強制升維為 2D。
+   - **單筆樣本線上推論（Inference）**：
+     - 若要預測單一筆資料，不能傳入 `[15, 200]`（1D），必須傳入 `[[15, 200]]`（2D 矩陣，形狀為 `(1, 2)`）或 `pd.DataFrame({"點擊次數": [15], "停留秒數": [200]})`。
+
+2. **目標標籤 $y$（監督式學習的預測答案）：通常要求 1D 一維結構**
+   - 模型的目標答案 $y$ 是一維數列，形狀應為 `(n_samples,)`（例如 `y = df["標籤"]`）。
+   - 若誤傳 2D 欄向量 `(n_samples, 1)`（如 `y = df[["標籤"]]`），模型訓練時會跳出警告：  
+     `DataConversionWarning: A column-vector y was passed when a 1d array was expected. Please change the shape of y to (n_samples, ), for example using ravel().`
+   - **特殊例外（當 $y$ 自身需要做特徵縮放時）**：
+     - 因為 `MinMaxScaler` / `StandardScaler` 只收 2D，若想對 $y$ 做標準化，必須先將其升維為 2D（如 `y.values.reshape(-1, 1)`），縮放完畢後若要傳入模型訓練，再用 `.ravel()` 或 `.reshape(-1)` 壓回 1D。
+
+---
+
 ## 現代語法升級與版本演進對照表 (Scikit-learn 1.0 ~ 1.4+)
 
 Scikit-learn 近年歷經多次現代化重構，請務必遵循當前推薦標準寫法：
@@ -161,6 +196,7 @@ print(f"訓練集形狀: {X_train.shape}, 測試集形狀: {X_test.shape}")
 ##### fit_transform() 特徵轉換核心機制與訓練測試集邊界
 
 - **使用時機**：在對**訓練集（$X_{train}$）**進行特徵縮放（Scaling）、類別編碼（Encoding）、缺失值填補（Imputing）或降維（PCA）時，一鍵同時完成「統計學習」與「矩陣轉換」。
+- **輸入維度限制**：**強制要求 2D 二維結構 (DataFrame / 2D Array)**，形狀為 `(n_samples, n_features)`。若僅有單一特徵欄位，請務必使用雙中括號 `df[['col']]` 或 `.values.reshape(-1, 1)`，否則將觸發 `ValueError`。
 - **三者本質定義與職責分工**：
   1. **`fit(X)`（只學不轉）**：
      - 從輸入資料中統計計算並記錄內部轉換參數（例如：`StandardScaler` 計算平均值 $\mu$ 與標準差 $\sigma$；`OneHotEncoder` 記憶類別字典；`SimpleImputer` 計算中位數）。
@@ -259,6 +295,7 @@ print("錯誤示範 (尺度崩壞):\n", bad_test_scaled.round(2))
 ##### StandardScaler() 與 MinMaxScaler() 特徵縮放標準化
 
 - **使用時機**：當不同特徵欄位的數值尺度相差懸殊時（如年齡 20~60 歲 vs 年薪 3 萬~150 萬元），大數值特徵會主導距離或梯度計算。必須將所有特徵壓縮至相同尺度。
+- **輸入維度限制**：**強制要求 2D 二維矩陣 / DataFrame**，形狀為 `(n_samples, n_features)`。若誤傳 1D Series（如 `df['身高']`），會立即拋出 `ValueError: Expected 2D array, got 1D array instead`。請務必使用雙中括號 `df[['身高']]` 或 `.values.reshape(-1, 1)`！
 - **數學原理**：
   - **StandardScaler (Z-Score 標準化)**：$z = \frac{x - \mu}{\sigma}$，轉換後各特徵均值為 0、標準差為 1，保留離群值分佈，適合多數演算法。
   - **MinMaxScaler (最大最小縮放)**：$x_{scaled} = \frac{x - x_{min}}{x_{max} - x_{min}}$，將數值嚴格壓縮至 $[0, 1]$ 區間。
@@ -318,6 +355,7 @@ print("標準化後前兩列:\n", X_scaled[:2].round(2))
 - **使用時機**：機器學習模型底層皆為矩陣數學運算，無法直接解析文字字串。
   - **OneHotEncoder (獨熱編碼)**：適用於**無先後順序的名目類別**（如部門：IT、HR、業務；城市：台北、台中）。每個類別展開為獨立二元虛擬變數（0 或 1）。
   - **OrdinalEncoder (順序編碼)**：適用於**具備高低等級順序的序數類別**（如學歷：高中 0、學士 1、碩士 2、博士 3）。
+- **輸入維度限制**：**強制要求 2D 二維矩陣 / DataFrame**，形狀為 `(n_samples, n_features)`。即使只編碼單一文字欄位，也必須使用雙中括號 `df[['部門']]` 而非單括號 `df['部門']`。
 - **語法**：`OneHotEncoder(categories='auto', drop=None, sparse_output=False, handle_unknown='ignore')`
 - **關鍵參數說明**：
   - `sparse_output`：布林值（現代預設為 `True`，建議設為 `False` 直接輸出易讀的密集陣列）。
@@ -373,6 +411,7 @@ print(encoded)
 ##### SimpleImputer() 缺失值填補
 
 - **使用時機**：真實資料常包含空值（NaN、None）。多數經典機器學習模型（線性回歸、SVM、神經網路）遇到缺失值會直接報錯，需透過統計量填補。
+- **輸入維度限制**：**強制要求 2D 二維結構** `(n_samples, n_features)`。單欄填補請務必使用雙中括號 `df[['年齡']]`。
 - **語法**：`SimpleImputer(missing_values=np.nan, strategy='mean', fill_value=None)`
 - **參數說明**：
   - `strategy`：填補策略字串：
