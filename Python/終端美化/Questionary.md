@@ -42,8 +42,8 @@ pip install questionary
 | **[[#questionary.autocomplete() 模糊搜尋與自動補全\|questionary.autocomplete()]]** | **模糊搜尋與自動補全提示器** | 從數百個城市、型號或長清單中快速搜尋 |
 | **[[#questionary.path() 檔案與目錄路徑選擇\|questionary.path()]]** | **檔案與資料夾路徑選擇器** | 支援 Tab 鍵自動補全檔案路徑 |
 | **[[#questionary.form() 組合多欄位表單工作流\|questionary.form()]]** | **將多個問題組合成完整表單** | 收集結構化資料，一次性回傳結果字典 |
-| **[[#questionary.Choice 與 questionary.Separator\|questionary.Choice]]** | **自訂選項標籤、真值與預設勾選狀態** | 分離「顯示名稱」與「程式內部回傳值」 |
-| **[[#questionary.Choice 與 questionary.Separator\|questionary.Separator]]** | **在選項清單中插入視覺分割線** | 選單分類美化、分隔不同群組選項 |
+| **[[#questionary.Choice 自訂選項物件\|questionary.Choice]]** | **自訂選項標籤、真值、禁用與附加說明物件** | 分離「顯示名稱」與「程式內部回傳值」、設定預設勾選 |
+| **[[#questionary.Separator 選項分隔線與群組標題\|questionary.Separator]]** | **在選項清單中插入視覺分割線或群組標題** | 選單分類美化、分隔不同群組選項（自動跳過不可選） |
 | **[[#questionary.Style 主題樣式美化 (整合 prompt_toolkit.styles.Style)\|questionary.Style]]** | **自訂問答組件的顏色與樣式** | 打造符合品牌色系或 Rich 風格的終端主題 |
 | **[[#Question 物件與底層 q.application.layout 架構延伸\|Question 與 q.application.layout]]** | **提示問題底層應用程式與佈局階層物件** | 動態攔截自訂快捷鍵 (如 Ctrl+O)、深入提取底層 InquirerControl |
 | **[[#questionary.prompts.common.InquirerControl 選單控制項核心類別\|InquirerControl]]** | **選單底層狀態控制與佈局核心類別** | 深入自訂選單控制項、動態選項搜尋、控制選項指針焦點 |
@@ -273,29 +273,61 @@ print("📋 建立完成的資料字典:", profile)
 
 ---
 
-##### questionary.Choice 與 questionary.Separator
+##### questionary.Choice 自訂選項物件
 
-- **使用時機**：
-  - `Choice`：需要將**「畫面上顯示的文字 (title)」**與**「程式內部實際取得的資料 (value)」**分開時使用。
-  - `Separator`：在選單中插入水平分割線或群組標題。
+- **使用時機**：需要將**「畫面上顯示的文字標題 (`title`)」**與**「程式內部實際取得的資料值 (`value`)」**分開時使用，亦可用於設定預設勾選狀態 (`checked`)、禁用說明 (`disabled`) 或附加提示說明 (`description`)。
+- **語法**：`Choice(title, value=None, disabled=None, checked=False, shortcut_key=None, description=None)`
+- **參數說明**：
+  - `title`：在終端選單中呈現給使用者看見的文字標籤字串。
+  - `value`：當該選項被使用者選中時，程式實際回傳的真值（若省略則預設等同於 `title`）。
+  - `disabled`：設為字串時，代表禁用該選項並在後方顯示禁用原因（游標會自動跳過）。
+  - `checked`：布林值，在多選複選框 (`checkbox`) 中是否預設為已勾選。
+  - `description`：當指針移動到該選項時，於選單底部動態呈現的附加描述文字。
+- **回傳值**：
+  - `Choice`：封裝完成的選項實例。
 
 ```python
-import questionary
-from questionary import Choice, Separator
+from questionary import Choice, select
 
-deploy_target = questionary.select(
+# 透過 Choice 物件分離顯示標籤與背後數值
+selected_db = select(
+    "請選擇資料庫服務：",
+    choices=[
+        Choice(title="PostgreSQL 16 (推薦)", value="postgres", description="強大開源關聯式資料庫"),
+        Choice(title="Redis 7.2 (快取)", value="redis", description="記憶體鍵值高速快取"),
+        Choice(title="Oracle DB", value="oracle", disabled="尚未支援授權連線")
+    ]
+).ask()
+
+print(f"實際獲取的資料庫代碼: {selected_db}")
+```
+
+---
+
+##### questionary.Separator 選項分隔線與群組標題
+
+- **使用時機**：在長選項清單中插入水平視覺分割線、分組大標題，幫助使用者在終端機中快速辨識不同類別的選項（游標上下移動時會自動跳過 Separator，不可被使用者選取）。
+- **語法**：`Separator(line="--")`
+- **參數說明**：
+  - `line`：字串，用作分割線或分類群組標題的文字內容（預設為 `"--"`）。
+- **回傳值**：
+  - `Separator`：選單視覺分割線實例。
+
+```python
+from questionary import Choice, Separator, select
+
+env = select(
     "請選擇部署目標環境：",
     choices=[
-        Separator("=== 🧪 測試環境 ==="),
-        Choice(title="本地端 (Localhost)", value="env_local"),
+        Separator("=== 測試環境 ==="),
+        Choice(title="本地開發端 (Localhost)", value="env_local"),
         Choice(title="測試伺服器 (Staging)", value="env_staging"),
-        Separator("=== 🚀 正式環境 ==="),
+        Separator("=== 正式環境 ==="),
         Choice(title="正式生產集群 (Production)", value="env_prod")
     ]
 ).ask()
 
-# 使用者看見的是中文標題，但變數拿到的會是 'env_local'、'env_prod'！
-print(f"部署環境代碼: {deploy_target}")
+print(f"部署環境代碼: {env}")
 ```
 
 ---
@@ -345,7 +377,7 @@ print(f"部署環境代碼: {deploy_target}")
 | **`q.application`** | `Application` | 取得此問題底層所封裝的 `prompt_toolkit.Application` 執行個體。 |
 | **`q.application.layout`** | `Layout` | 取得管理該問題所有視窗元件與容器的 `Layout` 佈局管理器。 |
 | **`q.application.layout.find_all_controls()`** | `Iterable[UIControl]` | 走訪此問題畫面佈局樹狀結構中所有的 `UIControl` 控制項。 |
-| **`q.application.key_bindings`** | `KeyBindings` | 取得此問題的按鍵綁定清單，可在啟動前透過 `@q.application.key_bindings.add(...)` 註冊額外快捷鍵。 |
+| **`q.application.key_bindings`** | `KeyBindings` | 取得此問題的按鍵綁定清單，可在啟動前透過 `@q.application.key_bindings.add(...)` 註冊額外快捷鍵。回呼函式會接收到 [[prompt_toolkit#KeyPressEvent 快捷鍵事件物件 (event)|KeyPressEvent]] 物件。 |
 | **`q.ask()` / `q.ask_async()`** | `Any` / `Coroutine` | 同步阻塞或非同步啟動 `q.application.run()`，進入互動事件迴圈。 |
 
 ```python

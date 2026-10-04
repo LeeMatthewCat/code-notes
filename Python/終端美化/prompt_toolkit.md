@@ -42,6 +42,7 @@
 | **[[#PromptSession() 的 bottom_toolbar 參數\|PromptSession() 的 bottom_toolbar 參數]]** | **在終端最底部呈現動態或靜態輔助狀態列** | 快捷鍵提示、動態字數統計、狀態資訊列 |
 | **[[#WordCompleter() 建立字詞補全清單\|WordCompleter()]]** | **依據關鍵字清單提供下拉自動補全** | CLI 指令、參數選項、關鍵字智慧補全 |
 | **[[#KeyBindings() 建立與攔截快捷鍵\|KeyBindings()]]** | **宣告自訂按鍵規則與信號攔截器** | 自訂熱鍵（如 Ctrl+Q 退出、Tab 縮排） |
+| **[[#KeyPressEvent 快捷鍵事件物件 (event)\|KeyPressEvent (event)]]** | **快捷鍵回呼函式所接收的按鍵事件上下文物件** | 熱鍵中存取 event.app 退出或重繪、操作 event.current_buffer |
 | **[[#Buffer 核心文字編輯緩衝區類別\|Buffer]]** | **終端文字輸入與編輯的核心狀態大腦** | 底層文字操作、自訂 UI 控制項、複雜編輯器 |
 | **[[#event.current_buffer 當前作用中緩衝區屬性\|event.current_buffer]]** | **快捷鍵事件中取得目前焦點所在的緩衝區實例** | 熱鍵事件中動態修改文字、移動游標、強制送出 |
 | **[[#session.default_buffer 預設輸入緩衝區核心概念\|session.default_buffer]]** | **PromptSession 所持有的主要持久輸入緩衝區實例** | 狀態列動態計算字數、預先掛載變更監聽器、外部檢查文字 |
@@ -340,24 +341,57 @@ print(f"執行指令: {text}")
 - **語法**：`KeyBindings()`
 - **參數說明**：無須參數。
 - **回傳值**：
-  - `KeyBindings`：管理快捷鍵註冊的空清單。建立後，需透過其 `.add('按鍵組合')` 裝飾器來制定具體規則。
+  - `KeyBindings`：管理快捷鍵註冊的空清單。建立後，需透過其 `.add(按鍵組合)` 裝飾器來制定具體規則。
 
 ```python
-...
 from prompt_toolkit import prompt
 from prompt_toolkit.key_binding import KeyBindings
 
 # 1. 建立快捷鍵設定清單
 bindings = KeyBindings()
 
-# 2. 制定規則：攔截 'Ctrl-Q' (c-q)，並賦予離開程式的行為
-@bindings.add('c-q')
+# 2. 制定規則：攔截 "Ctrl-Q" (c-q)，並賦予離開程式的行為
+@bindings.add("c-q")
 def _(event):
     event.app.exit()
-    ...
 
 # 3. 將這份清單當作參數交給 prompt，攔截規則即可生效
-text = prompt(..., key_bindings=bindings)
+# text = prompt("請輸入指令: ", key_bindings=bindings)
+```
+
+---
+
+##### KeyPressEvent 快捷鍵事件物件 (event)
+
+- **使用時機**：在 `@bindings.add(...)` 註冊的快捷鍵回呼函式中，系統會自動將當前按鍵事件物件傳入作為第一個參數 `event`（型別為 `prompt_toolkit.key_binding.KeyPressEvent`）。它是按鍵當下的「全知上下文」，持有應用程式全局控制權與焦點狀態。
+- **類別路徑**：`prompt_toolkit.key_binding.KeyPressEvent`
+- **核心屬性與方法說明**：
+
+| 屬性 / 方法名稱 | 資料型別 / 回傳型別 | 說明與用途 |
+| :--- | :--- | :--- |
+| **`event.app`** | `Application` | **當前運行的 Application 總指揮官**。可用於呼叫 `event.app.exit(result=...)` 終止程式或 `event.app.invalidate()` 強制重繪終端。 |
+| **`event.current_buffer`** | `Buffer` | **目前鍵盤焦點停留的文字緩衝區實例**。可用於讀取或修改 `text`、呼叫 `insert_text(...)` 或 `reset()`。 |
+| **`event.key_sequence`** | `list[KeyPress]` | **觸發該事件的原始按鍵序列物件清單**（例如 `[KeyPress(key=c-q, data=)]`）。 |
+| **`event.is_repeat`** | `bool` | **是否為長按按鍵產生的重複信號**（長按方向鍵時為 `True`，單次敲擊為 `False`）。 |
+| **`event.cli`** | `Application` | *(向後相容別名)*，指向 `event.app`。 |
+
+```python
+from prompt_toolkit import prompt
+from prompt_toolkit.key_binding import KeyBindings
+
+bindings = KeyBindings()
+
+# 捕捉 F2 鍵：取得焦點緩衝區並程式化插入文字
+@bindings.add("f2")
+def _(event):
+    # 1. 透過 event.current_buffer 操作焦點輸入框
+    event.current_buffer.insert_text(" [由 F2 自動補齊] ")
+
+# 捕捉 Esc 鍵：直接退出並回傳自訂訊號
+@bindings.add("escape")
+def _(event):
+    # 2. 透過 event.app 命令整個應用程式退出
+    event.app.exit(result="使用者手動取消")
 ```
 
 ---
