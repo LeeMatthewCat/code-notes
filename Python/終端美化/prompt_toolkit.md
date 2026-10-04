@@ -787,11 +787,15 @@ def _(event):
 
 ---
 
-# 應用程式生命週期與最高指揮官 (Application)
+# 應用程式與佈局控制核心 (Application & Layout)
 
-在 `prompt_toolkit` 的架構體系中，**`Application`** 是整個系統的心臟與最高指揮官。
+在 `prompt_toolkit` 的架構體系中，**`Application`** 是整個系統的心臟與最高指揮官，而 **`Layout`** 則是其下掌管所有畫面視窗（`Window`）與控制項（`UIControl`）的佈局大腦。
 
-無論是高階封裝的 `prompt()` 函式、`PromptSession` 會話管理類別，或是像 `questionary` 這樣的第三方互動庫，其底層都是透過建立並驅動一個 `Application` 實例來運作。
+無論是高階封裝的 `prompt()` 函式、`PromptSession` 會話管理類別，或是像 `questionary` 這樣的第三方互動庫，其底層都是透過建立並驅動一個 `Application` 實例，並在其內部掛載 `Layout` 樹狀結構來運作。
+
+---
+
+## 1. Application 應用程式生命週期與事件循環
 
 #### 核心架構定位與角色職責
 
@@ -879,9 +883,9 @@ print(f"程式結束回傳: {exit_result}")
 
 ---
 
-# 佈局與視窗控制核心 (Layout & UI Hierarchy)
+## 2. 佈局與視窗控制 (Layout & UI Hierarchy)
 
-在 `prompt_toolkit` 的全螢幕或多視窗互動應用中，所有呈現於終端的視覺元件都組織在一棵階層樹狀結構中。
+在全螢幕或多視窗互動應用中，所有呈現於終端的視覺元件都組織在 `Application.layout` 的階層樹狀結構中。最外層由 **`Layout`** 管理，其內部包含容器（如 `HSplit`、`VSplit`）、視窗（`Window`）以及真正承載內容與事件的 **`UIControl`（控制項）**。
 
 #### 核心架構階層關係：Layout、Window 與 UIControl
 

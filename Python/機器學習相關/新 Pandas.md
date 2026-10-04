@@ -184,6 +184,14 @@ df = pd.DataFrame(data)
 print(df.shape)  # 輸出: (3, 3)
 ```
 
+**`df` 表格結構**：
+
+| Index | 姓名 | 年齡 | 城市 |
+| :---: | :--- | :---: | :--- |
+| 0 | Alice | 25 | 台北 |
+| 1 | Bob | 30 | 台中 |
+| 2 | Charlie | 35 | 高雄 |
+
 ---
 
 ##### pd.date_range() 產生連續時間戳記索引數列
@@ -206,6 +214,16 @@ dates = pd.date_range(start="2026-10-01", periods=5, freq="D")
 ts_df = pd.DataFrame({"流量": [100, 120, 150, 130, 180]}, index=dates)
 print(ts_df.index.day_name())  # 輸出星期名稱清單
 ```
+
+**`ts_df` 表格結構**：
+
+| Index | 流量 |
+| :---: | :---: |
+| 2026-10-01 | 100 |
+| 2026-10-02 | 120 |
+| 2026-10-03 | 150 |
+| 2026-10-04 | 130 |
+| 2026-10-05 | 180 |
 
 ---
 
@@ -257,6 +275,13 @@ df = pd.DataFrame({"姓名": ["Alice", "Bob"], "成績": [90, 85]})
 # 匯出時排除預設數字索引，避免生成 Unnamed: 0 欄位
 df.to_csv("students.csv", index=False, encoding="utf-8-sig")
 ```
+
+**`df` 表格結構**：
+
+| Index | 姓名 | 成績 |
+| :---: | :--- | :---: |
+| 0 | Alice | 90 |
+| 1 | Bob | 85 |
 
 > **[常見踩坑：為何要加 `index=False`？避免 `Unnamed: 0` 幽靈欄位]**：  
 > - **問題成因**：DataFrame 預設帶有從 0 起算的流水號索引（Index）。若以預設 `index=True` 匯出，最左側的索引數字會被寫入 CSV，且該欄位在首行沒有標頭名稱（CSV 首行呈現 `,姓名,成績`）。  
@@ -340,6 +365,13 @@ df_read = pd.read_sql("SELECT * FROM grades WHERE score >= 90", con=engine)
 print(len(df_read))  # 輸出: 1
 ```
 
+**`df` 表格結構**：
+
+| Index | id | score |
+| :---: | :---: | :---: |
+| 0 | 1 | 95 |
+| 1 | 2 | 88 |
+
 ---
 
 ---
@@ -364,6 +396,14 @@ rows, cols = df.shape
 print(f"總列數: {rows}, 總欄數: {cols}")  # 輸出: 總列數: 3, 總欄數: 2
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 1 | 4 |
+| 1 | 2 | 5 |
+| 2 | 3 | 6 |
+
 ---
 
 ##### DataFrame.dtypes 欄位資料型別數列
@@ -381,6 +421,13 @@ print(df.dtypes)
 # 薪資     float64
 # 姓名      object
 ```
+
+**`df` 表格結構**：
+
+| Index | 年齡 | 薪資 | 姓名 |
+| :---: | :---: | :---: | :--- |
+| 0 | 25 | 50000.5 | Alice |
+| 1 | 30 | 65000.0 | Bob |
 
 ---
 
@@ -406,6 +453,13 @@ if "user" in df.columns:
     print("欄位存在！")
 ```
 
+**`df` 表格結構**：
+
+| Index | ` User ` | ` Age ` |
+| :---: | :---: | :---: |
+| 0 | 1 | 20 |
+| 1 | 2 | 25 |
+
 ---
 
 ##### DataFrame.values 與 DataFrame.to_numpy() 轉為底層 NumPy 陣列
@@ -424,6 +478,13 @@ X = df.to_numpy()
 print(type(X))  # 輸出: <class 'numpy.ndarray'>
 ```
 
+**`df` 表格結構**：
+
+| Index | x1 | x2 |
+| :---: | :---: | :---: |
+| 0 | 1.0 | 3.0 |
+| 1 | 2.0 | 4.0 |
+
 ---
 
 ##### DataFrame.size 與 DataFrame.ndim 元素總數與維度數
@@ -439,6 +500,13 @@ df = pd.DataFrame({"A": [1, 2], "B": [3, 4], "C": [5, 6]})
 print(df.size)  # 輸出: 6 (2 列 * 3 欄)
 print(df.ndim)  # 輸出: 2
 ```
+
+**`df` 表格結構**：
+
+| Index | A | B | C |
+| :---: | :---: | :---: | :---: |
+| 0 | 1 | 3 | 5 |
+| 1 | 2 | 4 | 6 |
 
 ---
 
@@ -467,6 +535,17 @@ print(df.head(3))  # 檢視前 3 筆 (0, 1, 2)
 print(df.tail(2))  # 檢視後 2 筆 (98, 99)
 ```
 
+**`df` 表格結構**：
+
+| Index | ID |
+| :---: | :---: |
+| 0 | 0 |
+| 1 | 1 |
+| 2 | 2 |
+| ... | ... |
+| 98 | 98 |
+| 99 | 99 |
+
 ---
 
 ##### DataFrame.info() 列印資料表記憶體與欄位摘要
@@ -483,6 +562,13 @@ df = pd.DataFrame({"姓名": ["Alice", None], "年齡": [25, 30]})
 df.info()
 # 輸出: 包含 RangeIndex 2 entries, 2 columns, Dtype 統計, memory usage 等
 ```
+
+**`df` 表格結構**：
+
+| Index | 姓名 | 年齡 |
+| :---: | :--- | :---: |
+| 0 | Alice | 25 |
+| 1 | `NaN` | 30 |
 
 ---
 
@@ -503,6 +589,16 @@ df = pd.DataFrame({"成績": [60, 70, 80, 90, 100], "班級": ["A", "A", "B", "B
 print(df.describe())  # 預設僅針對數值型欄位計算 count, mean, std, min, 25%, 50%, 75%, max
 print(df.describe(include="all"))  # 針對字串欄位補充 unique, top, freq
 ```
+
+**`df` 表格結構**：
+
+| Index | 成績 | 班級 |
+| :---: | :---: | :--- |
+| 0 | 60 | A |
+| 1 | 70 | A |
+| 2 | 80 | B |
+| 3 | 90 | B |
+| 4 | 100 | B |
 
 ---
 
@@ -580,6 +676,14 @@ print(df.loc["Bob", "成績"])  # 輸出: 90
 print(df.loc["Alice":"Charlie"])
 ```
 
+**`df` 表格結構**：
+
+| Index | 成績 |
+| :---: | :---: |
+| Alice | 80 |
+| Bob | 90 |
+| Charlie | 85 |
+
 ---
 
 ##### DataFrame.iloc[] 基於整數位置的切片與選取
@@ -600,6 +704,14 @@ sub_df = df.iloc[0:2, 0:2]
 print(sub_df.shape)  # 輸出: (2, 2)
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B | C |
+| :---: | :---: | :---: | :---: |
+| 0 | 10 | 40 | 70 |
+| 1 | 20 | 50 | 80 |
+| 2 | 30 | 60 | 90 |
+
 ---
 
 ##### DataFrame.at[] 與 DataFrame.iat[] 超高效純量存取
@@ -619,6 +731,13 @@ df = pd.DataFrame({"A": [1, 2], "B": [3, 4]}, index=["r1", "r2"])
 df.at["r1", "B"] = 99
 print(df.iat[0, 1])  # 輸出: 99
 ```
+
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| r1 | 1 | 3 |
+| r2 | 2 | 4 |
 
 ---
 
@@ -642,6 +761,14 @@ result = df.query("年齡 >= 30 and 薪資 >= @min_salary")
 print(len(result))  # 輸出: 2
 ```
 
+**`df` 表格結構**：
+
+| Index | 年齡 | 薪資 |
+| :---: | :---: | :---: |
+| 0 | 20 | 30000 |
+| 1 | 30 | 60000 |
+| 2 | 40 | 80000 |
+
 ---
 
 ##### Series.isin() 集合成員資格條件遮罩
@@ -663,6 +790,15 @@ target_cities = ["台北", "台中"]
 filtered_df = df[df["城市"].isin(target_cities)]
 print(filtered_df["城市"].tolist())  # 輸出: ['台北', '台中']
 ```
+
+**`df` 表格結構**：
+
+| Index | 城市 |
+| :---: | :--- |
+| 0 | 台北 |
+| 1 | 新竹 |
+| 2 | 台中 |
+| 3 | 台南 |
 
 ---
 
@@ -686,6 +822,12 @@ df = pd.DataFrame({"user_id": [1], "test_score_1": [80], "test_score_2": [90], "
 test_cols = df.filter(regex="^test_")
 print(test_cols.columns.tolist())  # 輸出: ['test_score_1', 'test_score_2']
 ```
+
+**`df` 表格結構**：
+
+| Index | user_id | test_score_1 | test_score_2 | final_eval |
+| :---: | :---: | :---: | :---: | :---: |
+| 0 | 1 | 80 | 90 | 85 |
 
 ---
 
@@ -715,6 +857,14 @@ print(df.isna().sum())
 # B    2
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :--- |
+| 0 | 1.0 | `NaN` |
+| 1 | `NaN` | `NaN` |
+| 2 | 3.0 | ok |
+
 ---
 
 ##### DataFrame.dropna() 剔除包含空值的列或欄
@@ -739,6 +889,14 @@ clean_df = df.dropna(subset=["電話"])
 print(len(clean_df))  # 輸出: 2
 ```
 
+**`df` 表格結構**：
+
+| Index | 姓名 | 電話 |
+| :---: | :--- | :--- |
+| 0 | Alice | 123 |
+| 1 | Bob | `NaN` |
+| 2 | Charlie | 789 |
+
 ---
 
 ##### DataFrame.fillna() 填補缺失值
@@ -761,6 +919,14 @@ mean_score = df["成績"].mean()
 df_filled = df.fillna({"成績": mean_score, "狀態": "待確認"})
 print(df_filled.loc[1, "成績"])  # 輸出: 85.0
 ```
+
+**`df` 表格結構**：
+
+| Index | 成績 | 狀態 |
+| :---: | :---: | :--- |
+| 0 | 80.0 | 已繳費 |
+| 1 | `NaN` | `NaN` |
+| 2 | 90.0 | 已繳費 |
 
 ---
 
@@ -802,6 +968,13 @@ df = pd.DataFrame({"ID": [1.0, 2.0], "類別": ["A", "B"]})
 df = df.astype({"ID": "int64", "類別": "category"})
 print(df["ID"].dtype)  # 輸出: int64
 ```
+
+**`df` 表格結構**：
+
+| Index | ID | 類別 |
+| :---: | :---: | :--- |
+| 0 | 1.0 | A |
+| 1 | 2.0 | B |
 
 ---
 
@@ -876,6 +1049,13 @@ df_dropped = df.drop(columns=["B", "C"])
 print(df_dropped.columns.tolist())  # 輸出: ['A']
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B | C |
+| :---: | :---: | :---: | :---: |
+| 0 | 1 | 3 | 5 |
+| 1 | 2 | 4 | 6 |
+
 ---
 
 ##### DataFrame.rename() 重新命名欄位或索引標籤
@@ -895,6 +1075,12 @@ df = pd.DataFrame({"old_a": [1], "old_b": [2]})
 df = df.rename(columns={"old_a": "new_a", "old_b": "new_b"})
 print(df.columns.tolist())  # 輸出: ['new_a', 'new_b']
 ```
+
+**`df` 表格結構**：
+
+| Index | old_a | old_b |
+| :---: | :---: | :---: |
+| 0 | 1 | 2 |
 
 ---
 
@@ -917,6 +1103,14 @@ df_unique = df.drop_duplicates(subset=["ID"], keep="last")
 print(df_unique.iloc[0]["姓名"])  # 輸出: Bob
 ```
 
+**`df` 表格結構**：
+
+| Index | ID | 姓名 |
+| :---: | :---: | :--- |
+| 0 | 101 | Alice |
+| 1 | 102 | Bob |
+| 2 | 101 | Alice_New |
+
 ---
 
 ##### DataFrame.sort_values() 依數值排序資料列
@@ -938,6 +1132,14 @@ df = pd.DataFrame({"部門": ["A", "B", "A"], "考績": [85, 95, 90]})
 df_sorted = df.sort_values(by=["部門", "考績"], ascending=[True, False])
 print(df_sorted.iloc[0]["考績"])  # 輸出: 90
 ```
+
+**`df` 表格結構**：
+
+| Index | 部門 | 考績 |
+| :---: | :--- | :---: |
+| 0 | A | 85 |
+| 1 | B | 95 |
+| 2 | A | 90 |
 
 ---
 
@@ -965,6 +1167,13 @@ df_flat = df_indexed.reset_index()
 print(df_flat.columns.tolist())  # 輸出: ['ID', '分數']
 ```
 
+**`df` 表格結構**：
+
+| Index | ID | 分數 |
+| :---: | :---: | :---: |
+| 0 | 101 | 80 |
+| 1 | 102 | 90 |
+
 ---
 
 ##### DataFrame.melt() 寬表格逆樞紐轉為長表格
@@ -986,6 +1195,12 @@ df = pd.DataFrame({"姓名": ["Alice"], "2025": [100], "2026": [150]})
 df_long = df.melt(id_vars=["姓名"], var_name="年份", value_name="業績")
 print(df_long.shape)  # 輸出: (2, 3) 包含 [姓名, 年份, 業績]
 ```
+
+**`df` 表格結構**：
+
+| Index | 姓名 | 2025 | 2026 |
+| :---: | :--- | :---: | :---: |
+| 0 | Alice | 100 | 150 |
 
 ---
 
@@ -1012,6 +1227,15 @@ df = pd.DataFrame({
 pt = df.pivot_table(index="部門", columns="性別", values="薪資", aggfunc="mean")
 print(pt.loc["研發", "女"])  # 輸出: 75000.0
 ```
+
+**`df` 表格結構**：
+
+| Index | 部門 | 性別 | 薪資 |
+| :---: | :--- | :--- | :---: |
+| 0 | 研發 | 男 | 70000 |
+| 1 | 研發 | 女 | 75000 |
+| 2 | 業務 | 男 | 50000 |
+| 3 | 業務 | 女 | 52000 |
 
 ---
 
@@ -1041,6 +1265,14 @@ df = pd.DataFrame({"部門": ["IT", "HR", "IT"], "薪資": [60000, 45000, 70000]
 print(df.groupby("部門", as_index=False)["薪資"].mean())
 ```
 
+**`df` 表格結構**：
+
+| Index | 部門 | 薪資 |
+| :---: | :--- | :---: |
+| 0 | IT | 60000 |
+| 1 | HR | 45000 |
+| 2 | IT | 70000 |
+
 ---
 
 ##### GroupBy.agg() 多元分組聚合運算
@@ -1069,6 +1301,15 @@ summary = df.groupby("部門").agg({
 print(summary)
 ```
 
+**`df` 表格結構**：
+
+| Index | 部門 | 業績 | 客戶數 |
+| :---: | :--- | :---: | :---: |
+| 0 | 業務 | 100 | 10 |
+| 1 | 業務 | 150 | 12 |
+| 2 | 研發 | 80 | 5 |
+| 3 | 研發 | 120 | 8 |
+
 ---
 
 ##### GroupBy.transform() 分組廣播轉換保持原形狀
@@ -1089,6 +1330,14 @@ dept_mean = df.groupby("部門")["薪資"].transform("mean")
 df["薪資差額"] = df["薪資"] - dept_mean
 print(df["薪資差額"].tolist())  # 輸出: [-10000.0, 10000.0, 0.0]
 ```
+
+**`df` 表格結構**：
+
+| Index | 部門 | 薪資 |
+| :---: | :--- | :---: |
+| 0 | A | 50000 |
+| 1 | A | 70000 |
+| 2 | B | 60000 |
 
 ---
 
@@ -1114,6 +1363,13 @@ df["總年薪"] = df.apply(calc_total, axis=1)
 print(df.loc[0, "總年薪"])  # 輸出: 490000
 ```
 
+**`df` 表格結構**：
+
+| Index | 底薪 | 獎金 |
+| :---: | :---: | :---: |
+| 0 | 30000 | 5000 |
+| 1 | 40000 | 8000 |
+
 ---
 
 ##### DataFrame.map() 全表元素逐格對映轉換
@@ -1137,6 +1393,13 @@ print(s_mapped.tolist())  # 輸出: ['男性', '女性', '男性']
 df = pd.DataFrame({"A": [1.234, 5.678], "B": [9.876, 3.456]})
 print(df.map(lambda x: round(x, 1)))
 ```
+
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 1.234 | 9.876 |
+| 1 | 5.678 | 3.456 |
 
 ---
 
@@ -1170,6 +1433,20 @@ all_df = pd.concat([df1, df2], ignore_index=True)
 print(len(all_df))  # 輸出: 4
 ```
 
+**`df1` 表格結構**：
+
+| Index | ID | 名稱 |
+| :---: | :---: | :--- |
+| 0 | 1 | A |
+| 1 | 2 | B |
+
+**`df2` 表格結構**：
+
+| Index | ID | 名稱 |
+| :---: | :---: | :--- |
+| 0 | 3 | C |
+| 1 | 4 | D |
+
 ---
 
 ##### pd.merge() 與 DataFrame.merge() 關聯式資料庫鍵值連接
@@ -1195,6 +1472,20 @@ merged = pd.merge(orders, users, on="uid", how="left")
 print(merged.columns.tolist())  # 輸出: ['uid', 'product', 'name']
 ```
 
+**`users` 表格結構**：
+
+| Index | uid | name |
+| :---: | :---: | :--- |
+| 0 | 1 | Alice |
+| 1 | 2 | Bob |
+
+**`orders` 表格結構**：
+
+| Index | uid | product |
+| :---: | :---: | :--- |
+| 0 | 1 | Book |
+| 1 | 1 | Pen |
+
 ---
 
 ##### DataFrame.join() 基於索引快速水平拼接
@@ -1214,6 +1505,20 @@ df1 = pd.DataFrame({"A": [1, 2]}, index=["x", "y"])
 df2 = pd.DataFrame({"B": [3, 4]}, index=["x", "y"])
 print(df1.join(df2))
 ```
+
+**`df1` 表格結構**：
+
+| Index | A |
+| :---: | :---: |
+| x | 1 |
+| y | 2 |
+
+**`df2` 表格結構**：
+
+| Index | B |
+| :---: | :---: |
+| x | 3 |
+| y | 4 |
 
 ---
 
@@ -1279,6 +1584,13 @@ df["是否為週末"] = df["交易時間"].dt.dayofweek >= 5
 print(df["是否為週末"].tolist())  # 輸出: [False, True]
 ```
 
+**`df` 表格結構**：
+
+| Index | 交易時間 |
+| :---: | :--- |
+| 0 | 2026-10-01 09:30:00 |
+| 1 | 2026-10-04 18:20:00 |
+
 ---
 
 ##### DataFrame.resample() 時間序列頻率重取樣
@@ -1300,6 +1612,21 @@ df = pd.DataFrame({"點擊數": range(10)}, index=dates)
 weekly = df.resample("W").sum()
 print(len(weekly))  # 輸出聚合後的週數
 ```
+
+**`df` 表格結構**：
+
+| Index | 點擊數 |
+| :---: | :---: |
+| 2026-10-01 | 0 |
+| 2026-10-02 | 1 |
+| 2026-10-03 | 2 |
+| 2026-10-04 | 3 |
+| 2026-10-05 | 4 |
+| 2026-10-06 | 5 |
+| 2026-10-07 | 6 |
+| 2026-10-08 | 7 |
+| 2026-10-09 | 8 |
+| 2026-10-10 | 9 |
 
 ---
 
@@ -1332,6 +1659,13 @@ print(df.mean(axis=0)["國文"])  # 輸出: 85.0
 df["總分"] = df.sum(axis=1)
 print(df["總分"].tolist())  # 輸出: [150, 175]
 ```
+
+**`df` 表格結構**：
+
+| Index | 國文 | 英文 |
+| :---: | :---: | :---: |
+| 0 | 80 | 70 |
+| 1 | 90 | 85 |
 
 ---
 
@@ -1490,6 +1824,14 @@ sub_df = df[df["A"] > 1].copy()
 sub_df["B"] = 999  # 安全賦值，完全不報警告，亦不污染原始 df
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 1 | 4 |
+| 1 | 2 | 5 |
+| 2 | 3 | 6 |
+
 ---
 
 ##### pd.set_option() 與 pd.get_option() 全域顯示與行為配置
@@ -1540,6 +1882,14 @@ sub_df = df[df["A"] > 1].copy()
 sub_df["B"] = 888  # 完全安全，與母表互不干擾
 ```
 
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 1 | 10 |
+| 1 | 2 | 20 |
+| 2 | 3 | 30 |
+
 ---
 
 ## 2. 條件篩選漏加小括號引爆運算子優先級災難
@@ -1559,6 +1909,14 @@ df = pd.DataFrame({"A": [5, 15, 25], "B": [10, 15, 20]})
 # [正確寫法]：每個條件皆以括號嚴格包覆
 result = df[(df["A"] > 10) & (df["B"] < 20)]
 ```
+
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 5 | 10 |
+| 1 | 15 | 15 |
+| 2 | 25 | 20 |
 
 ---
 
@@ -1582,6 +1940,14 @@ df = pd.DataFrame({"單價": [100, 200, 300], "數量": [2, 3, 4]})
 df["總額"] = df["單價"] * df["數量"]
 ```
 
+**`df` 表格結構**：
+
+| Index | 單價 | 數量 |
+| :---: | :---: | :---: |
+| 0 | 100 | 2 |
+| 1 | 200 | 3 |
+| 2 | 300 | 4 |
+
 ---
 
 ## 4. inplace=True 的記憶體陷阱與方法鏈條斷裂
@@ -1601,5 +1967,13 @@ df = pd.DataFrame({"A": [3, 1, 2], "B": [None, 4, 5]})
 # [推薦寫法]：乾淨明確的重新賦值或優雅的方法鏈接
 df_clean = df.dropna().sort_values(by="A").reset_index(drop=True)
 ```
+
+**`df` 表格結構**：
+
+| Index | A | B |
+| :---: | :---: | :---: |
+| 0 | 3 | `NaN` |
+| 1 | 1 | 4.0 |
+| 2 | 2 | 5.0 |
 
 ---

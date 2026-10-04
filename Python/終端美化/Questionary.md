@@ -340,7 +340,7 @@ print(f"部署環境代碼: {env}")
 - **語法與階層路徑**：
   - 提示問題物件：`q = questionary.select(...)`
   - 底層最高應用程式實例：`q.application`（即 [[prompt_toolkit#Application 應用程式實例與全螢幕生命週期|prompt_toolkit.Application]]）
-  - 佈局大腦：`q.application.layout`（即 [[prompt_toolkit#佈局與視窗控制核心 (Layout & UI Hierarchy)|prompt_toolkit.layout.Layout]]）
+  - 佈局大腦：`q.application.layout`（即 [[prompt_toolkit#2. 佈局與視窗控制 (Layout & UI Hierarchy)|prompt_toolkit.layout.Layout]]）
   - 遍歷所有控制項：`q.application.layout.find_all_controls()`（即 [[prompt_toolkit#layout.find_all_controls() 遍歷佈局中所有 UI 控制項|layout.find_all_controls()]]）
   - 提取底層選單控制器：
     ```python
