@@ -373,7 +373,7 @@ def _(event):
   - `is_global`：布林值（預設 `False`）。設為 `True` 時，即便目前焦點停留在未聚焦該控制項的視窗，只要條件滿足即全域生效。
   - `save_before`：回呼函式（預設記錄歷史），在執行快捷鍵動作前是否將當前文字狀態存入還原棧（Undo Stack）。
 - **回傳值**：
-  - 裝飾器函式，回傳被裝飾的回呼函式本身。被裝飾的函式接收唯一參數 `event`（型別為 `KeyPressEvent`）。
+  - 裝飾器函式，回傳被裝飾的回呼函式本身。被裝飾的函式接收唯一參數 `event`（型別為 `KeyPressEvent`）（**一定樣接收！**）。
 
 ```python
 from prompt_toolkit.filters import has_selection
