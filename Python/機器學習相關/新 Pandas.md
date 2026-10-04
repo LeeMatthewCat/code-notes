@@ -797,13 +797,17 @@ print(df.nunique())
 
 ##### DataFrame.loc[] 基於標籤的切片與選取
 
-- **使用時機**：已知明確的列標籤（Index 名稱）與欄位名稱時，進行精準資料提取或條件寫入。
-- **語法**：`df.loc[row_indexer, col_indexer]`
-- **核心特點**：
-  - **包頭也包尾（Inclusive）**：與 Python 傳統切片不同，`df.loc['a':'c']` 會完整包含 `'c'`！
-  - 支援布林遮罩（Boolean Mask）篩選。
-- **回傳值**：
-  - 純量值、`Series` 或 `DataFrame`（依傳入維度而定）。
+ - **使用時機**：已知明確的列標籤（Index 名稱）與欄位名稱時，進行精準資料提取或**原地賦值修改**。
+ - **語法**：
+   - 提取取值：`df.loc[row_indexer, col_indexer]`
+   - 賦值修改：`df.loc[row_indexer, col_indexer] = new_value`
+ - **核心特點**：
+   - **支援精準單點與條件批次賦值**：可直接覆寫單一儲存格，或搭配布林條件一次性修改符合條件的所有資料列。
+   - **防禦 `SettingWithCopyWarning` 的官方唯一標準寫法**：嚴禁使用鏈式切片賦值（如 `df[df['A']>1]['B'] = 99`），必須使用 `df.loc[條件, 欄位] = 99` 進行單步安全賦值！
+   - **包頭也包尾（Inclusive）**：與 Python 傳統切片不同，`df.loc['a':'c']` 會完整包含 `'c'`！
+   - 支援布林遮罩（Boolean Mask）篩選與賦值。
+ - **回傳值**：
+   - 取值回傳純量值、`Series` 或 `DataFrame`（依傳入維度而定）；賦值操作則就地修改原資料表（無回傳值）。
 
 ```python
 import pandas as pd
@@ -819,6 +823,16 @@ print(df.loc["Alice":"Charlie"])
 # Alice    80
 # Bob      90
 # Charlie  85
+
+# 3. 標籤定位與條件賦值修改（安全原地修改，徹底杜絕 SettingWithCopyWarning）
+df.loc["Bob", "成績"] = 99                # 單點修改 Bob 的成績為 99
+df.loc[df["成績"] < 85, "成績"] = 85       # 條件批次賦值：將低於 85 分者調升至 85 分
+print(df)
+# 輸出:
+#          成績
+# Alice    85
+# Bob      99
+# Charlie  85
 ```
 
 **`df` 表格結構**：
@@ -833,20 +847,33 @@ print(df.loc["Alice":"Charlie"])
 
 ##### DataFrame.iloc[] 基於整數位置的切片與選取
 
-- **使用時機**：不關心標籤叫什麼名字，只根據純粹的物理位置（第幾列、第幾欄）提取資料時使用。
-- **語法**：`df.iloc[row_position, col_position]`
-- **核心特點**：
-  - **包頭不包尾（Exclusive）**：嚴格遵循 Python 標準切片規則，`df.iloc[0:2]` 僅包含索引 0 與 1。
-- **回傳值**：
-  - 純量值、`Series` 或 `DataFrame`。
+ - **使用時機**：不關心標籤叫什麼名字，只根據純粹的物理位置（第幾列、第幾欄，從 0 起算）提取資料或**依整數座標賦值修改**時使用。
+ - **語法**：
+   - 提取取值：`df.iloc[row_position, col_position]`
+   - 賦值修改：`df.iloc[row_position, col_position] = new_value`
+ - **核心特點**：
+   - **依整數座標就地賦值**：可依物理位置直接覆寫單一儲存格、特定整列/整欄，或子區域矩陣區塊。
+   - **包頭不包尾（Exclusive）**：嚴格遵循 Python 標準切片規則，`df.iloc[0:2]` 僅包含索引 0 與 1。
+ - **回傳值**：
+   - 取值回傳純量值、`Series` 或 `DataFrame`；賦值操作則就地修改原資料表。
 
 ```python
 import pandas as pd
 
 df = pd.DataFrame({"A": [10, 20, 30], "B": [40, 50, 60], "C": [70, 80, 90]})
-# 提取前兩列、前兩欄（特徵矩陣與標籤分離常用）
+# 1. 提取前兩列、前兩欄（特徵矩陣與標籤分離常用）
 sub_df = df.iloc[0:2, 0:2]
 print(sub_df.shape)  # 輸出: (2, 2)
+
+# 2. 依整數位置賦值修改
+df.iloc[0, 0] = 999          # 單點賦值：將第 0 列第 0 欄覆寫為 999
+df.iloc[1:3, 1] = [555, 666] # 切片賦值：批次覆寫第 1~2 列的第 1 欄
+print(df)
+# 輸出:
+#      A    B   C
+# 0  999   40  70
+# 1   20  555  80
+# 2   30  666  90
 ```
 
 **`df` 表格結構**：
@@ -889,11 +916,23 @@ print(df.iat[0, 1])  # 輸出: 99
 ##### DataFrame.query() 基於布林表達式字串快速篩選
 
 - **使用時機**：當過濾條件繁多時，使用傳統中括號 `df[(df['a']>1) & (df['b']<2)]` 容易夾雜大量括號與重複變數名，`query()` 能以純文字表達式大幅提高可讀性。
-- **語法**：`df.query(expr, inplace=False)`
-- **核心特色**：
-  - 支援使用 `@變數名` 直接引用當前 Python 區域變數！
+- **語法**：`df.query(expr, inplace=False, **kwargs)`
+- **參數說明**：
+  - `expr`（字串 `str`，核心必要參數）：
+    - 要進行條件計算的文字表達式字串（如 `"年齡 >= 30 and 薪資 >= 50000"`）。
+    - **特殊語法與能力**：
+      - `@變數名`：在表達式中直接引用外部 Python 區域或全域變數（如 `@min_salary`）。
+      - `` `欄位名` ``（反引號）：若欄位名稱包含**空格**、**中文標點**或**特殊字元**（如減號、斜線）時，需用反引號包覆（如 `` `Total Score` > 80 ``）。
+      - **邏輯運算子**：同時支援文字關鍵字 `and`、`or`、`not` 與位元運算子 `&`、`|`、`~`。
+      - **集合成員比對**：支援 `in` 與 `not in` 語法（如 `"城市 in ['台北', '台中']"`）。
+      - **索引存取**：可使用保留字 `index` 直接對列索引進行過濾（如 `"index > 1"`）。
+  - `inplace`（布林值 `bool`，預設 `False`）：
+    - `False`（預設，推薦）：回傳過濾後的新 `DataFrame`，維持函數式方法鏈調用。
+    - `True`：就地修改原資料表並回傳 `None`（阻斷方法鏈，不推薦）。
+  - `**kwargs`（底層解析引擎參數）：
+    - `engine`：字串，可選 `'numexpr'` 或 `'python'`。若系統有安裝 NumExpr，大型表格運算會自動切換為多執行緒高效引擎；若需相容複雜 Python 語法則指定為 `'python'`。
 - **回傳值**：
-  - `DataFrame`：篩選後的資料表。
+  - `DataFrame`（當 `inplace=False` 時）或 `None`（當 `inplace=True` 時）。
 
 ```python
 import pandas as pd
@@ -901,9 +940,18 @@ import pandas as pd
 df = pd.DataFrame({"年齡": [20, 30, 40], "薪資": [30000, 60000, 80000]})
 min_salary = 50000
 
-# 使用 @ 符號引入外部區域變數，並以 and / or 串接
+# 1. 使用 @ 符號引入外部區域變數，並以 and / or 串接多條件
 result = df.query("年齡 >= 30 and 薪資 >= @min_salary")
-print(len(result))  # 輸出: 2
+print(result)
+# 輸出:
+#    年齡     薪資
+# 1  30  60000
+# 2  40  80000
+
+# 2. 若欄位名稱含有空格，使用反引號包裹；並支援 in 集合比對
+df_space = pd.DataFrame({"User Age": [25, 35], "City": ["台北", "高雄"]})
+print(df_space.query("`User Age` >= 30 and City in ['台北', '台中']"))
+# 輸出: 空表格 (無符合資料)
 ```
 
 **`df` 表格結構**：
@@ -913,6 +961,13 @@ print(len(result))  # 輸出: 2
 | 0 | 20 | 30000 |
 | 1 | 30 | 60000 |
 | 2 | 40 | 80000 |
+
+**`df_space` 表格結構**：
+
+| Index | `User Age` | City |
+| :---: | :---: | :--- |
+| 0 | 25 | 台北 |
+| 1 | 35 | 高雄 |
 
 ---
 
