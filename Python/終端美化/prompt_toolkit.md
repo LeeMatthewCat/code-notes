@@ -42,6 +42,7 @@
 | **[[#PromptSession() 的 bottom_toolbar 參數\|PromptSession() 的 bottom_toolbar 參數]]** | **在終端最底部呈現動態或靜態輔助狀態列** | 快捷鍵提示、動態字數統計、狀態資訊列 |
 | **[[#WordCompleter() 建立字詞補全清單\|WordCompleter()]]** | **依據關鍵字清單提供下拉自動補全** | CLI 指令、參數選項、關鍵字智慧補全 |
 | **[[#KeyBindings() 建立與攔截快捷鍵\|KeyBindings()]]** | **宣告自訂按鍵規則與信號攔截器** | 自訂熱鍵（如 Ctrl+Q 退出、Tab 縮排） |
+| **[[#key_bindings.add() 註冊快捷鍵監聽回呼\|key_bindings.add()]]** | **以裝飾器語法為 KeyBindings 註冊特定按鍵或組合鍵處理器** | 綁定單鍵 (Ctrl+Q)、連續組合鍵 (Ctrl+X Ctrl+S)、設定條件過濾器 |
 | **[[#KeyPressEvent 快捷鍵事件物件 (event)\|KeyPressEvent (event)]]** | **快捷鍵回呼函式所接收的按鍵事件上下文物件** | 熱鍵中存取 event.app 退出或重繪、操作 event.current_buffer |
 | **[[#Buffer 核心文字編輯緩衝區類別\|Buffer]]** | **終端文字輸入與編輯的核心狀態大腦** | 底層文字操作、自訂 UI 控制項、複雜編輯器 |
 | **[[#event.current_buffer 當前作用中緩衝區屬性\|event.current_buffer]]** | **快捷鍵事件中取得目前焦點所在的緩衝區實例** | 熱鍵事件中動態修改文字、移動游標、強制送出 |
@@ -357,6 +358,46 @@ def _(event):
 
 # 3. 將這份清單當作參數交給 prompt，攔截規則即可生效
 # text = prompt("請輸入指令: ", key_bindings=bindings)
+```
+
+---
+
+##### key_bindings.add() 註冊快捷鍵監聽回呼
+
+- **使用時機**：在建立 `KeyBindings` 實例後，作為裝飾器（Decorator）用來精確定義哪一個或哪一串按鍵被按下時，觸發特定的處理函式。亦可用於加入觸發條件過濾器（`filter`）或自訂按鍵儲存行為。
+- **語法**：`@bindings.add(*keys, filter=True, eager=False, is_global=False, save_before=...)`
+- **參數說明**：
+  - `*keys`：一至多個按鍵標識符（例如 `"c-q"` 代表 Ctrl+Q、`"c-x", "c-s"` 代表連續按鍵、`Keys.ControlC` 或特定字元如 `"escape"`、`"f2"`）。
+  - `filter`：布林值或 `Filter` / `Condition` 物件（預設 `True`）。只有當過濾條件為真時，該快捷鍵才會被啟用（例如 `has_focus("DEFAULT_BUFFER")`）。
+  - `eager`：布林值（預設 `False`）。當該快捷鍵為更長按鍵前綴時，是否立刻貪婪觸發而不等待後續按鍵。
+  - `is_global`：布林值（預設 `False`）。設為 `True` 時，即便目前焦點停留在未聚焦該控制項的視窗，只要條件滿足即全域生效。
+  - `save_before`：回呼函式（預設記錄歷史），在執行快捷鍵動作前是否將當前文字狀態存入還原棧（Undo Stack）。
+- **回傳值**：
+  - 裝飾器函式，回傳被裝飾的回呼函式本身。被裝飾的函式接收唯一參數 `event`（型別為 `KeyPressEvent`）。
+
+```python
+from prompt_toolkit.filters import has_selection
+from prompt_toolkit.key_binding import KeyBindings
+
+bindings = KeyBindings()
+
+# 1. 基礎單鍵綁定：攔截 Ctrl+Q
+@bindings.add("c-q")
+def _exit(event):
+    event.app.exit(result="安全退出")
+
+# 2. 組合多鍵連續按鍵 (例如 Emacs 風格：先按 Ctrl+X，再按 Ctrl+S)
+@bindings.add("c-x", "c-s")
+def _save(event):
+    print("\n[系統] 觸發連續按鍵存檔！")
+    event.app.invalidate()
+
+# 3. 搭配條件過濾器 (filter)：只有當文字處於被選取狀態時才生效
+@bindings.add("c-c", filter=has_selection)
+def _copy_selection(event):
+    # 僅在有文字選取時複製
+    data = event.current_buffer.copy_selection()
+    event.app.clipboard.set_data(data)
 ```
 
 ---
