@@ -258,6 +258,13 @@ df = pd.DataFrame({"姓名": ["Alice", "Bob"], "成績": [90, 85]})
 df.to_csv("students.csv", index=False, encoding="utf-8-sig")
 ```
 
+> **[常見踩坑：為何要加 `index=False`？避免 `Unnamed: 0` 幽靈欄位]**：  
+> - **問題成因**：DataFrame 預設帶有從 0 起算的流水號索引（Index）。若以預設 `index=True` 匯出，最左側的索引數字會被寫入 CSV，且該欄位在首行沒有標頭名稱（CSV 首行呈現 `,姓名,成績`）。  
+> - **踩坑現象**：下次使用 `pd.read_csv("students.csv")` 重新載入時，Pandas 因第一欄缺少欄位名稱，會自動將其命名為 `Unnamed: 0`。若反覆存取，還會滾雪球產生 `Unnamed: 0.1` 等無用重複欄位。  
+> - **最佳實踐**：  
+>   - **匯出時預防**：若索引無特殊業務意義，一律顯式加上 `index=False`。  
+>   - **讀取時補救**：若拿到已包含索引欄位的 CSV，可用 `pd.read_csv("students.csv", index_col=0)` 將第一欄還原為索引，或用 `df.drop(columns=["Unnamed: 0"])` 予以剔除。
+
 ---
 
 ##### pd.read_excel() 與 DataFrame.to_excel() 讀寫 Excel 工作表
