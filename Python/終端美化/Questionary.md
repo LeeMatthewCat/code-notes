@@ -44,7 +44,8 @@ pip install questionary
 | **[[#questionary.form() 組合多欄位表單工作流\|questionary.form()]]** | **將多個問題組合成完整表單** | 收集結構化資料，一次性回傳結果字典 |
 | **[[#questionary.Choice 與 questionary.Separator\|questionary.Choice]]** | **自訂選項標籤、真值與預設勾選狀態** | 分離「顯示名稱」與「程式內部回傳值」 |
 | **[[#questionary.Choice 與 questionary.Separator\|questionary.Separator]]** | **在選項清單中插入視覺分割線** | 選單分類美化、分隔不同群組選項 |
-| **[[#questionary.Style 主題樣式美化\|questionary.Style]]** | **自訂問答組件的顏色與樣式** | 打造符合品牌色系或 Rich 風格的終端主題 |
+| **[[#questionary.Style 主題樣式美化 (整合 prompt_toolkit.styles.Style)\|questionary.Style]]** | **自訂問答組件的顏色與樣式** | 打造符合品牌色系或 Rich 風格的終端主題 |
+| **[[#questionary.prompts.common.InquirerControl 選單控制項核心類別\|InquirerControl]]** | **選單底層狀態控制與佈局核心類別** | 深入自訂選單控制項、動態選項搜尋、控制選項指針焦點 |
 
 ---
 
@@ -294,6 +295,121 @@ deploy_target = questionary.select(
 
 # 使用者看見的是中文標題，但變數拿到的會是 'env_local'、'env_prod'！
 print(f"部署環境代碼: {deploy_target}")
+```
+
+---
+
+##### questionary.prompts.common.InquirerControl 選單控制項核心類別
+
+- **使用時機**：理解或深度擴充 `questionary` 底層選單運作機制時使用。它是 `select()`、`checkbox()` 與 `rawselect()` 背後最核心的 `prompt_toolkit` 控制項物件，掌管選項清單狀態、游標停駐指針、搜尋過濾與格式化文字渲染。
+- **類別層級與繼承關係**：
+  - 繼承自：`prompt_toolkit.layout.FormattedTextControl`
+  - 模組路徑：`questionary.prompts.common.InquirerControl`
+- **語法**：
+  ```python
+  from questionary.prompts.common import InquirerControl
+
+  ic = InquirerControl(
+      choices,
+      default=None,
+      pointer="»",
+      use_indicator=True,
+      use_shortcuts=False,
+      show_selected=False,
+      show_description=True,
+      use_arrow_keys=True,
+      initial_choice=None,
+  )
+  ```
+- **核心參數說明**：
+
+| 參數名稱 | 資料型別 | 預設值 | 說明與作用 |
+| :--- | :--- | :--- | :--- |
+| **`choices`** | `Sequence[str \| Choice \| dict]` | *(必填)* | 傳入選單的選項清單（字串、`Choice` 物件或字典）。內部會自動透過 `Choice.build()` 轉換。 |
+| **`default`** | `str \| Choice \| dict \| None` | `None` | 預設勾選或預設選取的數值。 |
+| **`pointer`** | `str \| None` | `"»"` | 指向當前焦點選項的符號字串（若設為 `None` 則不顯示指針並保留空白）。 |
+| **`use_indicator`** | `bool` | `True` | 是否在選項前顯示選取狀態指示符（如複選框的選取/未選取圖示）。 |
+| **`use_shortcuts`** | `bool` | `False` | 是否為每個選項自動分配單鍵快捷鍵（依序由 1-9, 0, a-z 分配）。 |
+| **`show_selected`** | `bool` | `False` | 是否在選單列表底部額外印出當前已選取選項的答案文字（`Answer: ...`）。 |
+| **`show_description`** | `bool` | `True` | 當停駐的選項帶有 `description` 描述時，是否在列表底部動態渲染描述文字。 |
+| **`use_arrow_keys`** | `bool` | `True` | 是否允許使用鍵盤方向鍵（上下鍵）移動游標。 |
+| **`initial_choice`** | `str \| Choice \| dict \| None` | `None` | 選單初始化時游標預設停駐的初始選項（必須為可選項目，不可為 Separator 或 disabled）。 |
+
+- **核心狀態屬性與內省方法**：
+
+| 屬性 / 方法名稱 | 型別 / 回傳型別 | 說明與用途 |
+| :--- | :--- | :--- |
+| **`ic.pointed_at`** | `int` | 當前指針焦點所在的選項索引值（整數）。 |
+| **`ic.selected_options`** | `list[Any]` | 目前已被使用者勾選/選中的選項 `value` 清單（多選時維護狀態）。 |
+| **`ic.is_answered`** | `bool` | 使用者是否已按下 Enter 完成答題並確認送出。 |
+| **`ic.search_filter`** | `str \| None` | 使用者即時鍵入的搜尋過濾字串（啟用搜尋時有效）。 |
+| **`ic.get_pointed_at()`** | `Choice` | 獲取當前指針焦點所指向的 `Choice` 物件實例。 |
+| **`ic.get_selected_values()`** | `list[Choice]` | 獲取所有目前被選中項目的 `Choice` 物件清單（排除 `Separator`）。 |
+| **`ic.select_next()`** | `None` | 將指針焦點移至下一個選項（自動對選項總數進行取模循環）。 |
+| **`ic.select_previous()`** | `None` | 將指針焦點移至上一個選項（循環向上）。 |
+| **`ic.is_selection_valid()`** | `bool` | 驗證當前停駐的項目是否合法可選（若為 `Separator` 或被禁用的 `disabled` 則為 `False`）。 |
+| **`ic.add_search_character(char)`** | `None` | 向搜尋過濾器追加字元並即時更新匹配清單。 |
+
+- **底層運作原理與佈局整合 (`create_inquirer_layout`)**：
+  在 `questionary` 內部，`InquirerControl` 作為 `prompt_toolkit` 的 UI 控制核心，會被包裝進 `create_inquirer_layout(ic, get_prompt_tokens)` 中：
+  1. **提示詞視窗**：透過 `PromptSession` 渲染題目字串 (`get_prompt_tokens`)。
+  2. **選單清單視窗**：將 `InquirerControl` 置於 `Window(ic)` 中，未送出時持續渲染所有選項 Token（游標符號、高亮樣式、快捷鍵標籤）。
+  3. **搜尋列與驗證列**：若有輸入搜尋過濾字串或即時驗證錯誤，以條件式容器 (`ConditionalContainer`) 動態懸浮展示在下方。
+
+```python
+from prompt_toolkit.application import Application
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
+from questionary.prompts.common import Choice, InquirerControl, Separator, create_inquirer_layout
+
+# 1. 準備選項清單
+choices = [
+    Choice(title="Python (高效後端)", value="python", description="適用於 AI、資料科學與 Web 後端"),
+    Separator("--- 前端技術 ---"),
+    Choice(title="TypeScript (現代前端)", value="typescript", description="型別安全的 JavaScript 超集"),
+    Choice(title="Rust (系統級程式語言)", value="rust", disabled="尚未支援")
+]
+
+# 2. 建立底層 InquirerControl 控制器
+ic = InquirerControl(
+    choices=choices,
+    pointer="»",
+    show_description=True,
+    use_shortcuts=False
+)
+
+# 3. 定義題目文字回呼 (Token 清單)
+def get_prompt_tokens():
+    if ic.is_answered:
+        return [("class:answer", f"已選擇: {ic.get_pointed_at().title}")]
+    return [("class:question", "請選擇主力開發語言: ")]
+
+# 4. 利用 questionary 內建函式構建 prompt_toolkit Layout 佈局
+layout = create_inquirer_layout(ic, get_prompt_tokens)
+
+# 5. 綁定基本按鍵控制
+bindings = KeyBindings()
+
+@bindings.add(Keys.Down)
+def _down(event):
+    ic.select_next()
+    while not ic.is_selection_valid():  # 自動跳過 Separator 與 disabled 選項
+        ic.select_next()
+
+@bindings.add(Keys.Up)
+def _up(event):
+    ic.select_previous()
+    while not ic.is_selection_valid():
+        ic.select_previous()
+
+@bindings.add(Keys.Enter)
+def _submit(event):
+    ic.is_answered = True
+    event.app.exit(result=ic.get_pointed_at().value)
+
+# 6. 啟動底層 prompt_toolkit 應用
+app = Application(layout=layout, key_bindings=bindings, full_screen=False)
+# selected_lang = app.run()
 ```
 
 ---

@@ -53,6 +53,9 @@
 | **[[#default_buffer.insert_text() 在游標處插入文字\|default_buffer.insert_text()]]** | **在當前游標所在位置精確插入一段文字字串** | 快捷鍵插入文字範本、自動補齊引號括號 |
 | **[[#default_buffer.validate_and_handle() 驗證並提交內容\|default_buffer.validate_and_handle()]]** | **立即觸發校驗器並程式化模擬按下 Enter 送出** | 快捷鍵強制送出、多行編輯中的快捷提交 |
 | **[[#default_buffer.reset() 清空並重置緩衝區\|default_buffer.reset()]]** | **清空文字內容、歸零游標並重置歷史還原棧** | Esc 鍵清空輸入、會話輪次手動重設 |
+| **[[#layout.find_all_controls() 遍歷佈局中所有 UI 控制項\|layout.find_all_controls()]]** | **搜尋並遍歷當前佈局樹狀結構中所有的 UI 控制項** | 走訪所有輸入緩衝區或格式化文字控制項、動態巡檢 |
+| **[[#layout.find_all_windows() 遍歷佈局中所有視窗容器\|layout.find_all_windows()]]** | **搜尋並產生當前佈局中所有的 Window 視窗實體** | 檢查各視窗幾何尺寸維度、批次設定視窗屬性 |
+| **[[#layout.focus() 與 layout.has_focus() 焦點切換與檢查\|layout.focus() / layout.has_focus()]]** | **切換鍵盤操作焦點至特定控制項或檢查焦點狀態** | 多視窗多輸入框切換、根據目前焦點動態啟用快捷鍵 |
 | **[[#yes_no_dialog() 確認對話框\|yes_no_dialog()]]** | **彈出全螢幕 Yes/No 互動確認視窗** | 刪除前確認、重要操作二次確認 |
 | **[[#print_formatted_text() 格式化輸出\|print_formatted_text()]]** | **支援彩色與樣式標籤的終端輸出函式** | 替代 print() 印出彩色訊息 |
 | **[[#HTML() 標籤化上色系統\|HTML()]]** | **使用 HTML 風格標籤對文字進行樣式標記** | 簡潔且語意化地為文字與提示符上色 |
@@ -704,6 +707,98 @@ bindings = KeyBindings()
 def _(event):
     # 按下 Esc 鍵時，清空當前輸入內容
     event.current_buffer.reset()
+```
+
+---
+
+# 佈局與視窗控制核心 (Layout & UI Hierarchy)
+
+在 `prompt_toolkit` 的全螢幕或多視窗互動應用中，所有呈現於終端的視覺元件都組織在一棵階層樹狀結構中。
+
+最外層由 **`Layout`** 管理，其內部包含容器（如 `HSplit`、`VSplit`）、視窗（`Window`）以及真正承載內容與事件的 **`UIControl`（控制項）**。
+
+---
+
+##### layout.find_all_controls() 遍歷佈局中所有 UI 控制項
+
+- **使用時機**：在應用程式初始化、快捷鍵回呼、動態更新或排查除錯時，需要搜尋、檢查或過濾目前畫面佈局樹狀結構中所有的 `UIControl` 控制項（例如尋找所有的 `BufferControl` 或 `FormattedTextControl`）。
+- **語法**：`layout.find_all_controls()`
+- **呼叫途徑**：
+  - 透過 `Application` 實例：`app.layout.find_all_controls()`
+  - 透過事件參數：`event.app.layout.find_all_controls()`
+  - 透過 `PromptSession` 實例：`session.layout.find_all_controls()`
+- **參數說明**：
+  - 無須傳入參數。
+- **回傳值**：
+  - `Iterable[UIControl]`：可迭代的控制項生成器，每次產生一個 `UIControl` 物件（如 `BufferControl`、`FormattedTextControl` 等）。
+
+---
+
+##### layout.find_all_windows() 遍歷佈局中所有視窗容器
+
+- **使用時機**：需要搜尋佈局中所有的 `Window` 視窗實體時使用（例如批次調整視窗尺寸、檢查可見度或設定 `always_hide_cursor`）。
+- **語法**：`layout.find_all_windows()`
+- **回傳值**：
+  - `Generator[Window, None, None]`：生成器，產生佈局中所有 `Window` 實例。
+
+---
+
+##### layout.focus() 與 layout.has_focus() 焦點切換與檢查
+
+- **使用時機**：在多視窗/多輸入框終端介面中，透過程式碼主動將鍵盤焦點切換到特定控制項、緩衝區或視窗，或檢查當前是否聚焦。
+- **語法**：
+  - 切換焦點：`layout.focus(value)`
+  - 檢查焦點：`layout.has_focus(value)`
+- **參數說明**：
+  - `value`：可傳入 `UIControl` 實例、`Buffer` 實例、緩衝區名稱字串（如 `'DEFAULT_BUFFER'`）、`Window` 實例或任意容器物件。
+- **回傳值**：
+  - `focus()` 回傳 `None`；`has_focus()` 回傳 `bool`。
+
+---
+
+#### 核心架構階層關係：Layout、Window 與 UIControl
+
+在 `prompt_toolkit` 中，三者的從屬關係為：
+
+```text
+  Application.layout (Layout 樹狀管理大腦)
+         │
+         ├── find_all_windows() 走訪所有可視視窗
+         │         │
+         │         └── Window (視窗幾何邊界、大小尺寸維度 Dimension)
+         │                   │
+         └── find_all_controls() 提取視窗內部掛載的控制項
+                             │
+                             └── UIControl (具體內容與邏輯)
+                                   ├── BufferControl (文字輸入框、游標控制)
+                                   └── FormattedTextControl (靜態文字、彩色選單)
+```
+
+- **`Window`**：負責「外觀幾何」與「尺寸限制」（寬度、高度、邊框、是否隱藏游標）。
+- **`UIControl`**：負責「內部內容」與「使用者互動」（繪製文字 Token、接收滑鼠點擊、快取文字）。
+- **`layout.find_all_controls()` 的底層實作**：內部即是走訪 `layout.find_all_windows()`，並依次取出各個 `window.content`！
+
+```python
+from prompt_toolkit import PromptSession
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+
+session = PromptSession()
+
+# 1. 遍歷當前會話佈局中的所有控制項
+for control in session.layout.find_all_controls():
+    if isinstance(control, BufferControl):
+        # 找到文字編輯緩衝區控制項 (例如預設輸入框 'DEFAULT_BUFFER')
+        print(f"找到緩衝區控制項: {control.buffer.name}")
+    elif isinstance(control, FormattedTextControl):
+        # 找到格式化文字控制項 (如狀態列或選單)
+        print("找到格式化文字控制項")
+
+# 2. 透過名稱將鍵盤焦點切換至指定緩衝區
+# session.layout.focus("DEFAULT_BUFFER")
+
+# 3. 檢查目前焦點是否停留在預設輸入框
+is_focused = session.layout.has_focus("DEFAULT_BUFFER")
+print(f"預設輸入框是否擁有焦點: {is_focused}")
 ```
 
 ---
