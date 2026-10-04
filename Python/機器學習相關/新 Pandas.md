@@ -552,6 +552,10 @@ print(df.tail(2))  # 檢視後 2 筆 (98, 99)
 
 - **使用時機**：拿到陌生資料集時必執行的診斷工具，一眼看清所有欄位的非空值數量與佔用記憶體。
 - **語法**：`df.info(verbose=None, memory_usage=None, show_counts=None)`
+- **參數說明**：
+  - `verbose`：是否展開所有欄位明細（若欄位過多時預設會折疊，設為 `True` 強制完整展開）。
+  - `memory_usage`：記憶體計算深度（設為 `'deep'` 可真實計算字串等複雜物件的記憶體開銷）。
+  - `show_counts`：是否強制顯示各欄位的非空計數。
 - **回傳值**：
   - `None`（直接印出文字摘要至 stdout）。
 
@@ -560,7 +564,6 @@ import pandas as pd
 
 df = pd.DataFrame({"姓名": ["Alice", None], "年齡": [25, 30]})
 df.info()
-# 輸出: 包含 RangeIndex 2 entries, 2 columns, Dtype 統計, memory usage 等
 ```
 
 **`df` 表格結構**：
@@ -569,6 +572,35 @@ df.info()
 | :---: | :--- | :---: |
 | 0 | Alice | 25 |
 | 1 | `NaN` | 30 |
+
+**終端輸出結果**：
+
+```text
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 2 entries, 0 to 1
+Data columns (total 2 columns):
+ #   Column  Non-Null Count  Dtype 
+---  ------  --------------  ----- 
+ 0   姓名      1 non-null      object
+ 1   年齡      2 non-null      int64 
+dtypes: int64(1), object(1)
+memory usage: 160.0+ bytes
+```
+
+> **[輸出資料逐行詳細解析]**：  
+> 1. **`<class 'pandas.core.frame.DataFrame'>`**：確認當前物件為 Pandas 核心的二維結構化資料表實例。  
+> 2. **`RangeIndex: 2 entries, 0 to 1`**：  
+>    - `RangeIndex`：表示列索引為預設的整數連續範圍（類似 Python 的 `range()`）。  
+>    - `2 entries`：資料表共有 2 列（Row）資料。  
+>    - `0 to 1`：索引標籤編號為 0 到 1（若為時間序列則會顯示 `DatetimeIndex` 與起訖日期）。  
+> 3. **`Data columns (total 2 columns):`**：資料表內包含的總欄位數（Columns）為 2 欄。  
+> 4. **欄位明細清單（核心診斷區）**：  
+>    - `#`：欄位編號索引（從 0 起算的流水號）。  
+>    - `Column`：欄位名稱。  
+>    - `Non-Null Count`：**非空值筆數**。例如 `姓名` 顯示 `1 non-null`，對照總列數 2 即代表有 $2 - 1 = 1$ 筆缺失值（`NaN` / `None`），是快速盤點特徵缺失率的最關鍵指標。  
+>    - `Dtype`：欄位底層儲存型別。`object` 代表文字字串或混雜 Python 物件；`int64` 代表 64 位元整數。若數值欄位顯示為 `object`，通常暗示資料混入了髒字串。  
+> 5. **`dtypes: int64(1), object(1)`**：全表型別彙總統計，各型別欄位數量一目了然（1 個整數欄、1 個字串/物件欄）。  
+> 6. **`memory usage: 160.0+ bytes`**：全表佔用的記憶體估算。結尾的 `+` 號代表這只是「淺層估算」（未深入追蹤 `object` 字串背後真實的記憶體指標開銷）。若需取得精確數值，可傳入 `df.info(memory_usage="deep")`。
 
 ---
 
