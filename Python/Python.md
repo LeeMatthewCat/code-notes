@@ -3596,7 +3596,14 @@ asyncio.run(main())
 - **使用限制**：
   - **`await` 只能出現在 `async def` 函式內部**，在普通同步函式中使用會引發 `SyntaxError` 語法錯誤！
   - 被 `await` 的對象必須是 **可等待物件 (Awaitable)**（例如協程 Coroutine、Task、Future）。
-
+> 誰等誰？
+> ```Python
+> async def b():
+>     print("b 開始")
+>     await a() # <--- 這裡
+>     print("b 結束")
+> ```
+> 在以上情況來說是 **b 在等 a**（a 也要是非同步函數）。
 ```python
 import asyncio
 
