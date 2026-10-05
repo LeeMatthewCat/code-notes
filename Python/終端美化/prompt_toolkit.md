@@ -59,6 +59,8 @@
 | **[[#layout.find_all_controls() 遍歷佈局中所有 UI 控制項\|layout.find_all_controls()]]** | **搜尋並遍歷當前佈局樹狀結構中所有的 UI 控制項** | 走訪所有輸入緩衝區或格式化文字控制項、動態巡檢 |
 | **[[#layout.find_all_windows() 遍歷佈局中所有視窗容器\|layout.find_all_windows()]]** | **搜尋並產生當前佈局中所有的 Window 視窗實體** | 檢查各視窗幾何尺寸維度、批次設定視窗屬性 |
 | **[[#layout.focus() 與 layout.has_focus() 焦點切換與檢查\|layout.focus() / layout.has_focus()]]** | **切換鍵盤操作焦點至特定控制項或檢查焦點狀態** | 多視窗多輸入框切換、根據目前焦點動態啟用快捷鍵 |
+| **[[#in_terminal() 暫停應用程式並交還終端環境\|in_terminal()]]** | **非同步上下文管理器，暫停當前應用並交還終端控制權** | 快捷鍵中開啟 Questionary 選單、執行外部 Shell 指令 |
+| **[[#run_in_terminal() 在終端中執行同步函式\|run_in_terminal()]]** | **在當前應用或提示符上方安全執行同步函式** | 同步快捷鍵回呼、終端安全列印、背景執行緒執行長任務 |
 | **[[#yes_no_dialog() 確認對話框\|yes_no_dialog()]]** | **彈出全螢幕 Yes/No 互動確認視窗** | 刪除前確認、重要操作二次確認 |
 | **[[#print_formatted_text() 格式化輸出\|print_formatted_text()]]** | **支援彩色與樣式標籤的終端輸出函式** | 替代 print() 印出彩色訊息 |
 | **[[#HTML() 標籤化上色系統\|HTML()]]** | **使用 HTML 風格標籤對文字進行樣式標記** | 簡潔且語意化地為文字與提示符上色 |
@@ -1000,6 +1002,173 @@ print(f"預設輸入框是否擁有焦點: {is_focused}")
 
 ---
 
+## 3. 終端輸出接管與暫停機制 (in_terminal & run_in_terminal)
+
+當 `Application`（或 `PromptSession`）處於運行狀態時，它會接管整個終端機的輸入輸出管道。
+
+此時終端會被切換為 **原始模式 (Raw Mode)**，停用預設的按鍵回顯，並由應用程式自主解析按鍵事件與繪製 ANSI 畫面。
+
+如果在應用程式運行期間，直接執行一般 `print()`、呼叫外部指令（如 `vim`、`git`），或是啟動另一個獨立的互動選單（例如 `questionary.select()`），會直接破壞當前的終端渲染狀態，導致畫面撕裂、游標錯位或按鍵輸入混亂。
+
+為了安全地跳出應用程式環境並執行外部終端互動，`prompt_toolkit` 提供了 `in_terminal()` 與 `run_in_terminal()` 機制。
+
+> **[生動比喻]**：  
+> - **直接使用 `print()` 或啟動第二個選單**：像「舞台劇演到一半時，工作人員直接衝上台搬桌子甚至換佈景」，演員與工作人員撞在一起，整齣戲瞬間大穿幫且畫面支離破碎。  
+> - **使用 `in_terminal()`**：像「舞台劇中場休息時，導演將大幕優雅拉下並開大燈」，讓舞台乾淨清空，工作人員把所有事情處理妥當後，大幕重新拉開，演員與燈光毫無痕跡地無縫復原！
+
+#### 底層運作生命週期流程
+
+```text
+  1. 暫停 Application 畫面渲染迴圈 (app._running_in_terminal = True)
+  2. 等待終端游標位置回報 (CPR, Cursor Position Report) 處理完畢
+  3. 依據參數抹除畫面 (erase) 或渲染為完成狀態 (render_as_done)
+  4. 分離終端輸入管道 (app.input.detach())
+  5. 暫時將終端切換回標準熟模式 (app.input.cooked_mode())
+  6. ─── 執行外部程式碼、Shell 指令或巢狀選單 (yield) ───
+  7. 重新接管終端輸入並切回原始模式 (Raw Mode)
+  8. 重設渲染器 (renderer.reset()) 並請求游標絕對座標
+  9. 重新完整重繪原本的應用程式介面 (app._redraw())
+```
+
+---
+
+##### in_terminal() 暫停應用程式並交還終端環境
+
+- **使用時機**：當 `PromptSession` 或 `Application` 正在運行（例如使用者正在輸入文字），而在**非同步快捷鍵回呼**或**協程任務**中，需要暫時掛起當前介面，彈出第二個互動工具（如 `questionary.select()` 選單）、執行文字編輯器（如 `nano`、`vim`），或執行子程序互動時使用。
+- **語法**：
+  ```python
+  from prompt_toolkit.application import in_terminal
+  # 或 from prompt_toolkit.application.run_in_terminal import in_terminal
+
+  async with in_terminal(render_cli_done=False):
+      # 於此區塊內執行外部終端互動或非同步程式碼
+      ...
+  ```
+- **參數說明**：
+
+| 參數名稱 | 期待型別 | 預設值 | 說明 |
+| :--- | :--- | :--- | :--- |
+| `render_cli_done` | `bool` | `False` | 決定暫停當前介面時的視覺處理方式。<br>• `False`：暫時將輸入介面從終端中抹除，執行完畢後原位恢復。<br>• `True`：先將當前輸入介面繪製為「已完成/已提交」狀態，輸出內容將接在下方捲動。 |
+
+- **回傳值**：
+  - `AsyncGenerator[None, None]`：非同步上下文管理器，無回傳物件。
+
+```python
+import questionary
+from prompt_toolkit import PromptSession
+from prompt_toolkit.application import in_terminal
+from prompt_toolkit.key_binding import KeyBindings
+
+# 1. 建立快捷鍵管理清單
+kb = KeyBindings()
+
+# 2. 註冊非同步快捷鍵：按下 Ctrl+O 暫停目前輸入框，彈出 Questionary 選單
+@kb.add("c-o", eager=True)
+async def _(event):
+    # 核心天條：必須在 in_terminal() 保護下啟動第二個 TUI 介面
+    async with in_terminal():
+        # 在安全熟模式終端下執行 Questionary 非同步選單
+        choice = await questionary.select(
+            "請選擇操作項目：",
+            choices=["查看詳情", "匯出資料", "取消"]
+        ).ask_async()
+
+    # 選單結束後，強制排程重繪目前 session 畫面以確保游標與外觀完整
+    event.app.invalidate()
+
+# 3. 啟動對話會話
+session = PromptSession(key_bindings=kb)
+text = session.prompt("> ")
+```
+
+---
+
+##### run_in_terminal() 在終端中執行同步函式
+
+- **使用時機**：在**同步函式**或**一般快捷鍵處理常式**中，需要在當前應用程式或提示列上方暫時執行某個同步可呼叫物件（Callable），例如列印資訊、執行阻塞性外部腳本或呼叫外部命令列工具。
+- **語法**：
+  ```python
+  from prompt_toolkit.application import run_in_terminal
+  # 或 from prompt_toolkit.application.run_in_terminal import run_in_terminal
+
+  run_in_terminal(func, render_cli_done=False, in_executor=False)
+  ```
+- **參數說明**：
+
+| 參數名稱 | 期待型別 | 預設值 | 說明 |
+| :--- | :--- | :--- | :--- |
+| `func` | `Callable[[], Any]` | *(必填)* | 要在終端中執行的無參數同步函式。 |
+| `render_cli_done` | `bool` | `False` | 是否先將當前提示介面繪製為完成狀態後再執行函式。 |
+| `in_executor` | `bool` | `False` | 是否將此函式丟入執行緒池 (`run_in_executor`) 執行。<br>若 `func` 包含耗時的阻塞式 I/O，設為 `True` 可防止凍結主事件迴圈！ |
+
+- **回傳值**：
+  - `Awaitable[Any]`：回傳一個 `Future` 物件。在非同步函式中可使用 `await` 等待其執行結果，在同步快捷鍵中亦可直接呼叫發起排程。
+
+```python
+import subprocess
+from prompt_toolkit import PromptSession
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.key_binding import KeyBindings
+
+kb = KeyBindings()
+
+# 1. 同步快捷鍵中執行外部編輯器
+@kb.add("c-e")
+def _(event):
+    def open_editor():
+        # 安全在終端機開啟 Vim 編輯檔案，退出後自動無痕還原輸入介面
+        subprocess.run(["vim", "temp.txt"])
+
+    run_in_terminal(open_editor)
+
+# 2. 同步快捷鍵中執行耗時任務，搭配 in_executor 防止事件迴圈卡死
+@kb.add("c-b")
+def _(event):
+    def blocking_backup():
+        # 模擬耗時備份操作
+        subprocess.run(["tar", "-czf", "backup.tar.gz", "src"])
+
+    # 啟用 in_executor=True 委派至背景執行緒執行
+    run_in_terminal(blocking_backup, in_executor=True)
+
+session = PromptSession(key_bindings=kb)
+text = session.prompt("> ")
+```
+
+---
+
+#### render_cli_done 渲染模式深度對比
+
+在呼叫 `in_terminal` 或 `run_in_terminal` 時，`render_cli_done` 參數決定了暫停期間終端視覺的呈現策略：
+
+| 比較維度 | `render_cli_done=False` (預設模式) | `render_cli_done=True` (完成模式) |
+| :--- | :--- | :--- |
+| **視覺行為** | **暫時抹除輸入框 (Erase)** | **將輸入框鎖定渲染為完成狀態 (Render as Done)** |
+| **終端歷史紀錄** | 執行外部程式時畫面乾淨，退出後在**原游標位置**無痕恢復 | 執行外部程式前，當前輸入框保留在終端向上滾動 |
+| **典型適用情境** | 彈出全螢幕選單（如 Questionary）、開啟文字編輯器 (Vim) | 在輸入框上方列印系統警告、即時通知訊息或 Log |
+| **使用者心理感受** | 像無縫彈出子視窗，關閉後繼續編輯當前行 | 像按下 Enter 後輸出一筆新資料，隨後開啟新行繼續輸入 |
+
+```python
+from prompt_toolkit import PromptSession
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.key_binding import KeyBindings
+
+kb = KeyBindings()
+
+@kb.add("c-l")
+def _(event):
+    # 使用 render_cli_done=True，將提示列作為歷史保留並在上方印出通知
+    def print_notice():
+        print("[系統通知] 外部日誌已更新！")
+
+    run_in_terminal(print_notice, render_cli_done=True)
+
+session = PromptSession(key_bindings=kb)
+text = session.prompt("> ")
+```
+
+---
+
 # 實用對話框元件 (Dialogs)
 
 提供類似 GUI 彈出視窗的終端機介面，非常適合用於確認操作或顯示訊息。
@@ -1244,4 +1413,39 @@ def _(event):
         await asyncio.sleep(1)
     
     event.app.create_background_task(async_save())
+```
+
+---
+
+## 5. 在 Application 運作期間直接輸出或巢狀互動導致畫面混亂
+
+> **[核心天條]：嚴禁在 Application 運行時直接使用 print() 或啟動第二個 TUI，必須透過 in_terminal() 或 run_in_terminal()！**
+
+- **錯誤症狀**：
+  終端畫面嚴重破版重疊、提示列被推擠覆蓋、按鍵輸入失去反應，或在終端機中殘留 `^[[39;1R` 等 ANSI 游標回報控制碼。
+- **背後原理**：
+  `prompt_toolkit` 接管終端時處於原始模式 (Raw Mode)，並透過 ANSI 轉義序列精確維護游標座標。直接使用原生 `print()` 或直接啟動另一個終端互動程序（如未包裝的 `questionary` 或 `subprocess`），會造成終端輸入輸出模式衝突，並中斷游標位置回報 (CPR) 的接收機制。
+
+```python
+import questionary
+from prompt_toolkit import PromptSession
+from prompt_toolkit.application import in_terminal
+from prompt_toolkit.key_binding import KeyBindings
+
+kb = KeyBindings()
+
+# [錯誤寫法]：直接在快捷鍵回呼中呼叫 Questionary 或原生 print()，導致終端混亂
+# @kb.add("c-o")
+# async def bad_handler(event):
+#     # 未使用 in_terminal()，兩個 Application 同時爭奪終端控制權，引發畫面崩潰與游標殘留
+#     await questionary.select("選擇", choices=["A", "B"]).ask_async()
+
+# [正確寫法]：透過 in_terminal() 暫停當前應用並交還終端控制權
+@kb.add("c-o", eager=True)
+async def safe_handler(event):
+    async with in_terminal():
+        await questionary.select("選擇", choices=["A", "B"]).ask_async()
+    
+    # 恢復後強制重繪畫面
+    event.app.invalidate()
 ```
