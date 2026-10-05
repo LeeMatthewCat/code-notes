@@ -1052,6 +1052,9 @@ print(f"預設輸入框是否擁有焦點: {is_focused}")
 
 - **回傳值**：
   - `AsyncGenerator[None, None]`：非同步上下文管理器，無回傳物件。
+- **為什麼必須使用 `async with`？**：
+  - **成對環境切換 (`with`)**：進入時切回熟模式 (Cooked Mode) 並解綁輸入；離開時於 `finally` 強制還原原始模式 (Raw Mode) 並重繪畫面，確保例外發生時終端不崩潰。
+  - **非同步 I/O 等待 (`async`)**：交還終端前，底層必須以 `await` 等待終端游標位置回報 (CPR) 完成，避免殘留色碼 (如 `^[[39;1R`) 污染螢幕；同時允許在區塊內直接 `await` 其他非同步選單 (如 Questionary)。
 
 ```python
 import questionary
