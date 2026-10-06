@@ -20,6 +20,7 @@
 | **[[#input() 彩色輸入\|console.input()]]**                  | 物件方法  | **支援顏色與樣式標記的使用者終端輸入**           | 互動式命令列工具提示、彩色密碼與設定輸入              |
 | **[[#.size / .width 偵測終端尺寸與長度\|console.size / width]]** | 屬性    | **取得當前終端視窗的寬度、高度與行列尺寸**         | 動態響應式佈局、自適應文字截斷與邊界排版              |
 | **[[#Text() 文字物件\|Text()]]**                            | 類別建構子 | **建立具備精細局部樣式的富文字物件**            | 逐字著色、字元級別高亮、避免 Markup 標籤衝突        |
+| **[[#escape() 標記跳脫函式\|escape()]]**                     | 獨立函式  | **跳脫字串中的方括號以防止被誤判為 Markup 標籤** | 安全印出未過濾之使用者輸入、路徑、正則表達式與日誌 |
 | **[[#Rule() 水平分隔線\|Rule()]]**                           | 類別建構子 | **繪製帶有可選文字標題的全寬水平裝飾線**          | 區隔終端操作區塊、展示階段性成果的分界標記             |
 | **[[#Table() 繪製資料表\|Table()]]**                         | 類別建構子 | **建立具備對齊、邊框樣式與自適應寬度的資料表格**      | 呈現關聯資料、資料庫查詢結果、CLI 報表展示           |
 | **[[#track() 迴圈包裝器\|track()]]**                         | 獨立函式  | **極簡一行包裝 Iterable 產生動態進度條**     | 批次迴圈資料處理、檔案下載與轉換進度追蹤              |
@@ -305,6 +306,52 @@ console.print(my_text)
 ```
 
 > **💡 小提醒**：一般的 `Text("[blue]嗨[/blue]")` 不會發揮顏色效果，因為它為了安全防呆，會直接把標籤當成普通文字印出來！若要解析中括號標籤，請務必使用 `from_markup()`。
+
+---
+
+##### escape() 標記跳脫函式
+
+- **使用時機**：
+  - 當需要將**不可信的外部字串**（如使用者輸入、包含方括號的檔案路徑、正規表達式、IPv6 位址、例外訊息或外部日誌）與 Rich Markup 標籤拼接在同一行輸出時使用。
+  - 防止字串中的方括號 `[...]` 被 Rich 誤判為樣式標記，避免樣式意外污染或引發 `MarkupError` 崩潰。
+- **語法**：`escape(markup: str) -> str`
+- **模組匯入路徑**：`from rich.markup import escape`（注意：無法直接從 `rich` 根模組匯入）。
+- **參數說明**：
+  - `markup` (`str`)：包含潛在方括號或反斜線的原始純文字字串。
+- **回傳值**：
+  - `str`：將可能觸發標籤解析的方括號加上反斜線跳脫（例如將 `[` 轉為 `\[`）後的安全字串。
+
+> **[生動比喻]**：  
+> - **未經跳脫直接拼接**：像「把含有 SQL 指令的未過濾文字直接拼進查詢語法中」，遇到 `[/tag]` 這類字眼時，直譯器會把它當成真正的排版控制指令，進而引發格式錯亂甚至語法崩潰（Markup Injection）。  
+> - **使用 `escape()`**：像「對使用者輸入進行 HTML 特殊字元跳脫 (`htmlspecialchars`)」，把所有的角括號與引號加上保護罩，讓終端機只把內容當作純文字如實呈現！
+
+> **[核心觀念]：三種防禦未過濾文字的策略對比**  
+> 1. **`escape(text)`**（推薦）：當你**既想保留整行特定 Rich 顏色標籤，又想安全嵌入不可信文字**時的唯一正解（如 `console.print(f"[bold cyan]用戶：[/bold cyan] {escape(raw_input)}")`）。  
+> 2. **`console.print(text, markup=False)`**：整行**完全不包含任何樣式標籤**時使用，直接關閉該行所有標記解析。  
+> 3. **`Text(text)`**：建構純文字物件傳入，預設不會解析中括號，兼顧物件化操作。
+
+```python
+from rich.console import Console
+from rich.markup import escape
+
+console = Console()
+
+# 1. 包含潛在危險標籤與方括號的使用者輸入
+untrusted_input = "查詢代碼: [/admin] 與陣列索引: [0]"
+
+# [錯誤示範]：若直接拼接，會觸發 MarkupError 崩潰
+# console.print(f"[bold red]警報：[/bold red] {untrusted_input}")
+# 崩潰報錯: rich.errors.MarkupError: closing tag '[/admin]' doesn't match any open tag
+
+# [正確寫法]：使用 escape() 安全跳脫
+safe_text = escape(untrusted_input)
+console.print(f"[bold green]安全輸出：[/bold green] {safe_text}")
+# 終端顯示: 安全輸出： 查詢代碼: [/admin] 與陣列索引: [0]
+
+# 2. 檔案路徑與正規表達式跳脫
+file_path = r"C:\project\[backup]\test.py"
+console.print(f"[cyan]處理檔案：[/cyan] {escape(file_path)}")
+```
 
 ---
 
