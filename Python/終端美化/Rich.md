@@ -30,6 +30,7 @@
 | **[[#Syntax() 語法高亮\|Syntax()]]**                        | 類別建構子 | **支援各程式語言的語法高亮與行號顯示**           | 原始碼展示、設定檔 (JSON/YAML) 終端預覽、教學文檔列印 |
 | **[[#Markdown() 渲染 Markdown\|Markdown()]]**             | 類別建構子 | **將 Markdown 語法即時解析並渲染於控制台**    | 終端機閱讀 README、說明文件展示、CHANGELOG 呈現  |
 | **[[#Tree() 樹狀結構\|Tree()]]**                            | 類別建構子 | **建立具備階層指引線的樹狀目錄與結構圖**          | 檔案目錄結構遍歷、組織架構圖、巢狀資料結構視覺化          |
+| **[[#Spinner() 旋轉載入動畫物件\|Spinner()]]**               | 類別建構子 | **建立可嵌入各組件的自訂動態載入旋轉動畫**        | 嵌入 Table/Panel 即時看板、多任務獨立載入狀態、自訂 Live 動畫刷新 |
 | **[[#cell_len() 計算終端顯示寬度\|cell_len()]]**                | 獨立函式  | **精確計算字串在終端上佔用的實際單元格數量**        | 解決中文字元/全形 Emoji 佔用 2 單元格導致的排版對齊錯位 |
 | **[[#set_cell_size() 固定單元格寬度\|set_cell_size()]]**       | 獨立函式  | **強制將字串裁切或補齊至指定的終端單元格寬度**       | 自定義表格對齊、固定欄寬字串排版                  |
 | **[[#chop_cells() 依單元格寬度切割字串\|chop_cells()]]**          | 獨立函式  | **依指定單元格寬度將長字串切分為多行清單**         | 終端機自適應折行、自定義寬度文字換行處理              |
@@ -642,6 +643,101 @@ tree.add("📄 utils.py")
 
 console.print(tree)
 ...
+```
+
+---
+
+##### Spinner() 旋轉載入動畫物件
+
+- **使用時機**：
+  - 當需要超越 `console.status()` 的簡易情境，將動態載入轉圈動畫嵌入到其他 Rich 佈局組件（如 `Table` 的單元格、`Panel` 卡片、`Columns` 或自訂 `Group`）中時。
+  - 需要在同一個動態畫面（如 Dashboard 儀表板）中，同時呈現多個各自獨立運作的任務狀態或轉圈圈時。
+  - 需要更細緻地自訂旋轉樣式（內建 70+ 種主題）、調整轉速（`speed`），或在任務進行中透過 `.update()` 動態切換提示文字與顏色時。
+- **語法**：`Spinner(name: str, text: Union[RenderableType, Text] = "", *, style: Optional[StyleType] = None, speed: float = 1.0)`
+- **參數說明**：
+
+| 參數名稱 | 期待型別 | 預設值 | 說明 |
+| :--- | :--- | :--- | :--- |
+| `name` | `str` | *(必填)* | 動畫主題名稱（如 `"dots"`, `"line"`, `"circle"`, `"bouncingBar"` 等）。若傳入不支援的名稱會拋出 `KeyError`。 |
+| `text` | `str` / `Text` / `Renderable` | `""` | 顯示在旋轉圖示右側的文字或可渲染物件（支援 Markup 標記文字與 Text）。 |
+| `style` | `str` / `Style` / `None` | `None` | 套用於旋轉圖示字元本身的樣式與顏色（如 `"cyan"`, `"bold green"`），不影響右側 `text`。 |
+| `speed` | `float` | `1.0` | 動畫播放速度倍率（大於 1 加速，小於 1 減速，如 `2.0` 為雙倍速）。 |
+
+- **回傳值**：
+  - `Spinner`：旋轉載入動畫物件實例。
+
+- **核心方法與屬性**：
+  - `spinner.update(text="", style=None, speed=None)`：在動畫運行中即時修改提示文字、圖示樣式或播放速度。
+  - `spinner.text`：取得或設定目前右側文字內容。
+  - `spinner.name`：取得當前動畫主題名稱。
+
+> **[生動比喻]**：  
+> - **`console.status()`**：像「開箱即用的一體成型免洗微波爐」，內建封裝了畫面更新迴圈，按下按鈕就能轉圈，但只能單獨一人使用。  
+> - **`Spinner`**：像「獨立出廠的精密旋轉馬達零件」！它不自帶電源，但你可以把它任意安裝進任何機械結構中——例如裝在 `Table` 的每一列展示多任務狀態，或是裝在 `Panel` 邊框內打造專屬狀態卡片。
+
+> **[核心觀念]：靜態影格 (Static Frame) vs 動態刷新驅動 (Live Engine)**  
+> - `Spinner` 本身純粹是一個 **Renderable（可渲染組件）**，其內部**不包含**自動定時器或獨立執行緒。  
+> - 若直接執行 `console.print(Spinner("dots"))`，只會在終端機印出一格**靜止不動的單一影格符號**。  
+> - 若要讓動畫持續旋轉，**必須將其交由動態刷新容器驅動**（最常見為搭配 `Live` 上下文，或由 `Status` 託管），透過持續的畫面刷新迴圈持續渲染最新影格！
+
+> **[小提醒]**：  
+> - 想要預覽所有動畫效果時，可隨時在終端機輸入 `python -m rich.spinner` 查看所有 70+ 種動畫樣式名稱與旋轉效果。  
+> - 常用經典樣式包括：`"dots"`（預設圓點）、`"line"`（傳統斜線旋轉）、`"aesthetic"`（動態波紋）、`"arrow3"`（箭頭循環）、`"bouncingBar"`（彈跳橫條）、`"clock"`（時鐘指針）。
+
+```python
+import time
+from rich.console import Console
+from rich.live import Live
+from rich.spinner import Spinner
+
+console = Console()
+
+# 1. 基礎調用：建立 Spinner 並由 Live 動態刷新驅動
+spinner = Spinner("dots", text="正在建立遠端連線...", style="cyan", speed=1.5)
+
+with Live(spinner, refresh_per_second=10):
+    time.sleep(2)
+
+    # 2. 運行途中即時更新提示文字與顏色
+    spinner.update(text="[bold green]下載資料中 (45%)...[/bold green]", style="green")
+    time.sleep(2)
+
+console.print("[bold green][完成][/bold green] 連線與下載程序結束！")
+```
+
+```python
+import time
+from rich.console import Console
+from rich.live import Live
+from rich.table import Table
+from rich.spinner import Spinner
+
+console = Console()
+
+# 1. 進階實戰：在 Table 儲存格中嵌入多個 Spinner 打造多任務狀態看板
+tasks = [
+    {"name": "任務 A (檔案下載)", "status": Spinner("dots", text="下載中...", style="yellow")},
+    {"name": "任務 B (資料解析)", "status": Spinner("line", text="等待排程...", style="cyan")},
+    {"name": "任務 C (模型推論)", "status": Spinner("bouncingBar", text="準備中...", style="magenta")},
+]
+
+def generate_table() -> Table:
+    table = Table(title="多任務非同步執行狀態看板", border_style="blue")
+    table.add_column("任務名稱", style="bold white")
+    table.add_column("即時狀態")
+    for task in tasks:
+        table.add_row(task["name"], task["status"])
+    return table
+
+# 2. 使用 Live 持續刷新整張表格，各儲存格內的 Spinner 將同步各自旋轉
+with Live(generate_table(), refresh_per_second=10) as live:
+    time.sleep(2)
+
+    # 模擬任務 A 完成，將 Spinner 替換為完成字串
+    tasks[0]["status"] = "[bold green][完成][/bold green]"
+    tasks[1]["status"].update(text="[bold yellow]解析中...[/bold yellow]", style="yellow")
+    live.update(generate_table())
+    time.sleep(2)
 ```
 
 ---
