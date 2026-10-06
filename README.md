@@ -28,7 +28,7 @@
   * [HTTPX.md](./Python/網頁相關/HTTPX.md) / [readability.md](./Python/網頁相關/readability.md) / [html2text.md](./Python/html2text.md)：現代非同步網路請求與網頁內容擷取。
   * [Rich.md](./Python/終端美化/Rich.md) / [Questionary.md](./Python/終端美化/Questionary.md) / [prompt_toolkit.md](./Python/終端美化/prompt_toolkit.md) / [Live.md](./Python/終端美化/Live.md)：互動式終端 UI 與控制台美化。
   * [Pydantic.md](./Python/JSON%20格式相關/Pydantic.md) / [JSON Schema.md](./Python/JSON%20格式相關/JSON%20Schema.md) / [JSON.md](./Python/JSON%20格式相關/JSON.md)：資料驗證與結構化 Schema 解析。
-  * [sys.md](./Python/sys.md) / [logging.md](./Python/logging.md) / [Time.md](./Python/Time.md) / [inspect.md](./Python/inspect.md) / [platform.md](./Python/platform.md) / [textwrap.md](./Python/textwrap.md)。
+  * [sys.md](./Python/sys.md) / [logging.md](./Python/logging.md) / [Time.md](./Python/Time.md) / [inspect.md](./Python/inspect.md) / [platform.md](./Python/platform.md) / [textwrap.md](./Python/textwrap.md) / [itertools.md](./Python/itertools.md)。
 
 ---
 
