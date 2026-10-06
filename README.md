@@ -17,6 +17,7 @@
 
 ### 2. Python 現代化開發與工程實踐 (`Python/`)
 * **[Python.md](./Python/Python.md)**：Python 核心語法、高階特徵、型別提示、裝飾器與內建常用函式。
+* **[型別標記.md](./Python/型別標記.md)**：Python 靜態型別系統、現代小寫型別、版本演進對照、循環匯入隔離 (`TYPE_CHECKING`) 與執行期型別內省。
 * **[專案準備.md](./Python/專案準備.md)**：現代 Python 專案結構、`uv` 虛擬環境管理、`pyproject.toml` 與環境變數配置規範。
 * **[Python 專案測試指南.md](./Python/Python%20專案測試指南.md)**：Pytest 單元測試、Mock 隔離測試與自動化測試最佳實踐。
 * **[SQLite.md](./Python/SQLite.md)**：Python 內建輕量化關聯資料庫的使用與操作實務。
