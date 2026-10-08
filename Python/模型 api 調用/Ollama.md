@@ -277,19 +277,19 @@ print(response["response"])
 
 ###### ollama.chat() 回傳物件 ChatResponse 欄位說明
 
-| 欄位名稱 | 資料型別 | 說明與存取寫法範例 |
-| :--- | :--- | :--- |
-| **`message`** | `Message` / `dict` | **模型回傳的消息物件**（包含 `role`, `content`, `thinking`, `tool_calls` 等子屬性）。存取：`response.message` 或 `response["message"]` |
-| **`model`** | `str` | **實際呼叫的模型名稱標籤**（如 `"qwen2.5:7b"`）。 |
-| **`created_at`** | `str` | **回應產生的 ISO 8601 時間戳記**。 |
-| **`done`** | `bool` | **回應生成是否完結**（非串流模式固定為 `True`）。 |
-| **`done_reason`** | `str` | **停止生成的原因**（如 `"stop"` 代表正常生成完畢，`"length"` 代表達 Token 上限）。 |
-| **`total_duration`** | `int` | **模型處理總耗時**（單位：奈秒 ns，除以 $10^9$ 即為秒數）。 |
-| **`load_duration`** | `int` | **模型載入至顯存/記憶體的耗時**（單位：奈秒 ns）。 |
-| **`prompt_eval_count`** | `int` | **輸入 Prompt 提示詞的 Token 數量**。 |
-| **`prompt_eval_duration`** | `int` | **評估/處理輸入提示詞的耗時**（單位：奈秒 ns）。 |
-| **`eval_count`** | `int` | **模型生成輸出的 Token 數量**（生成答覆的長度）。 |
-| **`eval_duration`** | `int` | **模型生成解答的耗時**（單位：奈秒 ns）。 |
+| 欄位名稱                       | 資料型別               | 說明與存取寫法範例                                                                                                        |
+| :------------------------- | :----------------- | :--------------------------------------------------------------------------------------------------------------- |
+| **`message`**              | `Message` / `dict` | **模型回傳的消息物件**（包含 `role`, `content`, `thinking`, `tool_calls` 等子屬性）。存取：`response.message` 或 `response["message"]` |
+| **`model`**                | `str`              | **實際呼叫的模型名稱標籤**（如 `"qwen2.5:7b"`）。                                                                               |
+| **`created_at`**           | `str`              | **回應產生的 ISO 8601 時間戳記**。                                                                                         |
+| **`done`**                 | `bool`             | **回應生成是否完結**（非串流模式固定為 `True`）。                                                                                   |
+| **`done_reason`**          | `str`              | **停止生成的原因**（如 `"stop"` 代表正常生成完畢，`"length"` 代表達 Token 上限）。                                                        |
+| **`total_duration`**       | `int`              | **模型處理總耗時**（單位：奈秒 ns，除以 $10^9$ 即為秒數）。                                                                            |
+| **`load_duration`**        | `int`              | **模型載入至顯存/記憶體的耗時**（單位：奈秒 ns）。                                                                                    |
+| **`prompt_eval_count`**    | `int`              | **輸入 Prompt 提示詞的 Token 數量**。                                                                                     |
+| **`prompt_eval_duration`** | `int`              | **評估/處理輸入提示詞的耗時**（單位：奈秒 ns）。                                                                                     |
+| **`eval_count`**           | `int`              | **模型生成輸出的 Token 數量**（生成答覆的長度）。                                                                                   |
+| **`eval_duration`**        | `int`              | **模型生成解答的耗時**（單位：奈秒 ns）。                                                                                         |
 
 ###### .message 子欄位與 .tool_calls 結構
 

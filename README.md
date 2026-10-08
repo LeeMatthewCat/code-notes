@@ -20,7 +20,7 @@
 * **[型別標記.md](./Python/型別標記.md)**：Python 靜態型別系統、現代小寫型別、版本演進對照、循環匯入隔離 (`TYPE_CHECKING`) 與執行期型別內省。
 * **[專案準備.md](./Python/專案準備.md)**：現代 Python 專案結構、`uv` 虛擬環境管理、`pyproject.toml` 與環境變數配置規範。
 * **[Python 專案測試指南.md](./Python/Python%20專案測試指南.md)**：Pytest 單元測試、Mock 隔離測試與自動化測試最佳實踐。
-* **[SQLite.md](./Python/SQLite.md)**：Python 內建輕量化關聯資料庫的使用與操作實務。
+* **[sqlite3.md](./Python/sqlite3.md)**：Python 內建輕量化關聯資料庫、現代交易架構 (3.12+ PEP 684) 與 WAL 高效模式實務。
 * **[Regex.md](./Python/Regex.md)**：正則表達式語法、模式匹配、文字清洗與實戰應用。
 * **核心模組詳解**：
   * [os.md](./Python/路徑與檔案相關/os.md) / [Pathlib.md](./Python/路徑與檔案相關/Pathlib.md) / [shutil.md](./Python/路徑與檔案相關/shutil.md)：現代檔案路徑處理、系統互動與高階檔案操作。
