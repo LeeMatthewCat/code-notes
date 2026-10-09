@@ -63,6 +63,9 @@ ollama rm qwen2.5:7b
 | **[[#ollama.chat() 多輪對話與對話歷史\|ollama.chat()]]** | **發送包含角色歷史的訊息串列以進行多輪對話** | 打造對話機器人、上下文連續問答、Tool Use 工具調用 |
 | **[[#串流打字機效果 (stream=True)\|stream=True]]** | **開啟串流輸出模式以逐字產生模型輸出** | 即時打字機視覺呈現、降低長文本回答的等待感知延遲 |
 | **[[#結構化 JSON 輸出 (format="json")\|format="json"]]** | **強制模型僅以特定 JSON 或 Pydantic Schema 格式輸出** | 資料抽取、API 資料對接、結構化資訊解析 |
+| **[[#ollama.ResponseError 伺服器回應與執行錯誤\|ollama.ResponseError]]** | **Ollama 伺服器回傳之 HTTP 狀態碼錯誤或串流中斷例外** | 攔截模型未下載 (404)、不支援圖片 (400) 或推論崩潰 (500) |
+| **[[#ollama.RequestError 請求端錯誤基底類別\|ollama.RequestError]]** | **客戶端請求發送或參數封裝層級之異常** | 請求構建失敗、無效請求格式防禦 |
+| **[[#ConnectionError 服務未啟動或無法連線\|ConnectionError]]** | **無法連線至本機或遠端 Ollama 守護進程** | 檢測 Ollama 服務是否正在運行 (localhost:11434) |
 
 ---
 
@@ -625,6 +628,224 @@ if response.message.tool_calls:
 >             print(f"\n🛠️ [串流觸發] 收到工具呼叫請求: {call.function.name}")
 >             print(f"📦 參數內容: {call.function.arguments}")
 > ```
+
+# 例外處理與錯誤體系 (Exceptions & Error Handling)
+
+在透過 Python 呼叫本機或遠端 Ollama 服務時，錯誤可能發生在「網路連線階段」或「伺服器模型運作階段」。
+
+Ollama SDK 提供了明確的例外分工體系：
+
+```text
+Exception
+ ├── ConnectionError (Python 內建標準庫，連線失敗時由 SDK 拋出)
+ ├── ollama.RequestError (請求構建與客戶端層級異常基底類別)
+ └── ollama.ResponseError (伺服器回傳 HTTP 錯誤或串流中斷異常)
+```
+
+---
+
+## 核心例外與常見狀態碼速查表
+
+| 例外類別 | 狀態碼 (`status_code`) | 觸發原因與典型情境 | 典型錯誤訊息範例 | 建議應對防禦策略 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`ResponseError`** | **`404`** | 目標模型尚未下載，或模型標籤名稱拼寫錯誤 | `model '...' not found, try pulling it first` | 提示使用者執行 `ollama pull` 或使用 `ollama.list()` 動態校驗 |
+| **`ResponseError`** | **`400`** | 請求參數非法，或當前模型不支援特定能力 (如傳入圖片至純文字模型) | `model "..." does not support images` | 呼叫前透過 `ollama.show()` 檢查 capabilities，或攔截降級為純文字 |
+| **`ResponseError`** | **`500`** | 伺服器內部錯誤、GPU 顯存或系統記憶體不足 (OOM)、後端崩潰 | `server error` 或 `out of memory` | 降低 `num_ctx` 上下文長度、重啟服務或切換較小參數量級模型 |
+| **`ResponseError`** | **`-1` / 串流** | 串流生成 (`stream=True`) 過程中途發生異常，chunk 包含錯誤訊息 | `JSON chunk 內含 'error'` | 在串流迭代中加入 `try...except` 區塊即時防禦 |
+| **`RequestError`** | 無 | 客戶端發送請求或格式封裝異常 | `Reason for the error.` | 檢查傳入引數型別與客戶端設定 |
+| **`ConnectionError`** | 無 | 本機 Ollama 守護進程未啟動，或指定 Host 無法連通 | `Failed to connect to Ollama. Please check...` | 提示使用者啟動 Ollama 應用程式或執行 `ollama serve` |
+
+---
+
+##### ollama.ResponseError 伺服器回應與執行錯誤
+
+- **使用時機**：
+  - 當 Ollama 伺服器成功接收到 HTTP 請求，但在處理或執行推論過程中回傳了非 200 的狀態碼（例如 404 模型不存在、400 參數不支援、500 服務端崩潰）時使用。
+  - 當以串流模式 (`stream=True`) 進行對話，而後端在輸出中途拋出錯誤區塊時亦會觸發。
+- **語法**：
+  ```python
+  from ollama import ResponseError
+
+  try:
+      response = ollama.chat(model=model_name, messages=messages)
+  except ResponseError as e:
+      print(f"錯誤代碼: {e.status_code}")
+      print(f"錯誤原因: {e.error}")
+  ```
+- **核心屬性說明**：
+
+| 屬性名稱 | 資料型別 | 說明 |
+| :--- | :--- | :--- |
+| **`status_code`** | `int` | HTTP 回應狀態碼（如 `404`, `400`, `500`；若為串流解析錯誤則預設為 `-1`）。 |
+| **`error`** | `str` | 伺服器回傳的詳細錯誤原因文字（SDK 會自動解析 JSON 回應中的 `error` 欄位）。 |
+
+- **回傳值**：
+  - 例外物件實例，呼叫 `str(e)` 會自動格式化為 `f"{self.error} (status code: {self.status_code})"`。
+
+```python
+import ollama
+from ollama import ResponseError
+
+# 1. 模擬調用未下載的模型以觸發 404
+try:
+    ollama.chat(
+        model="non_existent_model:latest",
+        messages=[{"role": "user", "content": "測試"}]
+    )
+except ResponseError as e:
+    if e.status_code == 404:
+        print(f"[404 模型未下載] 請先執行下載: ollama pull {e.error}")
+    elif e.status_code == 400:
+        print(f"[400 參數無效或不支援] 錯誤詳情: {e.error}")
+    elif e.status_code == 500:
+        print(f"[500 伺服器內部異常] 可能是顯存不足 (OOM): {e.error}")
+    else:
+        print(f"[HTTP {e.status_code}] 未知回應錯誤: {e.error}")
+```
+
+---
+
+##### ollama.RequestError 請求端錯誤基底類別
+
+- **使用時機**：Ollama 客戶端在構建請求或進行底層傳輸前發生的通用請求異常。
+- **語法**：`from ollama import RequestError`
+- **核心屬性說明**：
+  - `error`: `str`，記錄發起請求失敗的具體原因。
+- **回傳值**：
+  - 例外物件實例。
+
+```python
+from ollama import RequestError
+
+try:
+    # 執行客戶端操作
+    pass
+except RequestError as e:
+    print(f"請求發送失敗: {e.error}")
+```
+
+---
+
+##### ConnectionError 服務未啟動或無法連線
+
+- **使用時機**：
+  - 當本機的 Ollama 守護進程（Daemon）尚未啟動，或是指定的連線目標位址（如 `http://localhost:11434`）無法連通時使用。
+- **底層機制說明**：
+  - **重要特性**：此例外不是自訂類別，而是 **Python 內建標準庫的 `builtins.ConnectionError`**！
+  - 當底層 `httpx` 發送連線嘗試失敗拋出 `httpx.ConnectError` 時，Ollama SDK 會將其攔截並包裝為帶有官方指引訊息的標準 `ConnectionError` 重新拋出。
+  - 預設錯誤文字為：`Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download`。
+
+```python
+import ollama
+
+# 檢測 Ollama 服務連線狀態並優雅降級
+def check_ollama_status() -> bool:
+    try:
+        ollama.list()
+        return True
+    except ConnectionError:
+        print("未偵測到正在運行的 Ollama 服務！")
+        print("請確認以下項目：")
+        print("1. 已開啟 Ollama 桌面應用程式，或於終端機執行 `ollama serve`")
+        print("2. 檢查本機通訊埠 11434 是否正常監聽")
+        return False
+
+is_ready = check_ollama_status()
+```
+
+---
+
+# 實戰避坑與核心天條
+
+## 1. 忽視 ConnectionError 導致程式啟動即崩潰
+
+> **[核心天條]：調用 Ollama 前必須攔截 ConnectionError，或預先確認守護進程狀態！**
+
+- **錯誤症狀**：
+  腳本一啟動便直接崩潰退出，拋出 `ConnectionError: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible.`。
+- **背後原理**：
+  Ollama 為本機客戶端/伺服器架構，Python SDK 必須透過 HTTP 請求與 `localhost:11434` 溝通。若使用者開機後未啟動 Ollama 應用程式，任何 API 呼叫均無法完成握手。
+
+```python
+import ollama
+
+# [錯誤寫法]：直接調用而不進行連線防禦
+# response = ollama.chat(model="qwen2.5:7b", messages=[{"role": "user", "content": "你好"}])
+
+# [正確寫法]：捕獲 ConnectionError 並提供友善啟動提示
+try:
+    response = ollama.chat(model="qwen2.5:7b", messages=[{"role": "user", "content": "你好"}])
+    print(response.message.content)
+except ConnectionError:
+    print("Ollama 服務未啟動，請先啟動 Ollama 應用程式！")
+```
+
+---
+
+## 2. 不支援視覺的模型傳入圖片引爆 ResponseError (400)
+
+> **[核心天條]：向模型傳入 images 參數前，必須確認該模型支援多模態能力！**
+
+- **錯誤症狀**：
+  程式執行時崩潰，拋出 `ollama._types.ResponseError: model "qwen2.5-coder:7b" does not support images (status code: 400)`。
+- **背後原理**：
+  並非所有開源模型均具備視覺（Vision）權重。純文字模型（如 `qwen2.5-coder`、`deepseek-r1`）接收到圖片位元組或路徑時，Ollama 核心會直接回傳 HTTP 400 錯誤。
+
+```python
+import ollama
+from ollama import ResponseError
+
+model_name = "qwen2.5-coder:7b"
+
+# [正確寫法 A]：預先透過 ollama.show() 檢查模型能力
+capabilities = ollama.show(model_name).capabilities or []
+if "vision" not in capabilities:
+    print(f"模型 {model_name} 不支援圖片讀取，已自動降級為純文字對話！")
+
+# [正確寫法 B]：呼叫時針對 400 錯誤進行精準攔截
+try:
+    ollama.chat(
+        model=model_name,
+        messages=[{"role": "user", "content": "這張圖有什麼？", "images": ["test.png"]}]
+    )
+except ResponseError as e:
+    if e.status_code == 400 and "does not support images" in e.error:
+        print("攔截到模型不支援視覺錯誤，請切換至支援多模態的模型 (如 llava 或 qwen2.5vl)！")
+```
+
+---
+
+## 3. 未按 status_code 細分例外導致除錯困難
+
+> **[核心天條]：捕獲 ResponseError 時，應讀取 e.status_code 區分 404 (缺模型)、400 (傳參錯) 與 500 (顯存爆)！**
+
+- **錯誤症狀**：
+  使用通用 `except Exception:` 或單純印出字串，無法區分是模型不存在、參數給錯還是本機顯卡記憶體不足，難以自動化復原。
+- **背後原理**：
+  `ResponseError` 攜帶了完整的 HTTP 狀態碼與詳細原因，透過 `e.status_code` 可以實作智慧復原邏輯（例如 404 自動觸發下載，500 自動釋放顯存）。
+
+```python
+import ollama
+from ollama import ResponseError
+
+target_model = "deepseek-r1:7b"
+
+try:
+    response = ollama.chat(
+        model=target_model,
+        messages=[{"role": "user", "content": "計算質數"}]
+    )
+except ResponseError as e:
+    if e.status_code == 404:
+        # 404: 自動觸發 pull 下載模型
+        print(f"本地無此模型，開始自動下載 {target_model}...")
+        ollama.pull(target_model)
+    elif e.status_code == 500:
+        # 500: 記憶體不足，提示更換小模型
+        print("本地顯存或記憶體不足，請降低 context 長度或切換至較小模型！")
+    else:
+        raise
+```
 
 ---
 
