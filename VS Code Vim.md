@@ -578,14 +578,14 @@ VS Code Vim 內建模擬了著名的 `vim-surround` 外掛（預設啟用）
 
 - **核心動作**：`ds` (Delete Surround)、`cs` (Change Surround)、`ys` (You Surround)
 
-| 指令格式 | 動作名稱 | 範例原始文字 | 執行指令 | 變更後結果 |
-| :--- | :--- | :--- | :--- | :--- |
-| `ds{char}` | 刪除外圍符號 | `"Hello World"` | `ds"` | `Hello World` |
-| `cs{old}{new}` | 替換外圍符號 | `'Hello World'` | `cs'"` | `"Hello World"` |
-| `cs{old}{new}` | 替換為括號 | `"Hello"` | `cs"(` | `( Hello )` (有空格) |
-| `cs{old}{new}` | 替換為緊貼括號 | `"Hello"` | `cs")` | `(Hello)` (無空格) |
-| `ys{motion}{char}` | 新增外圍符號 | `total_count` (游標在單詞上) | `ysiw"` | `"total_count"` |
-| `ys{motion}{tag}` | 包覆 HTML 標籤 | `Hello` | `ysiw<em>` | `<em>Hello</em>` |
+| 指令格式               | 動作名稱       | 範例原始文字                 | 執行指令       | 變更後結果             |
+| :----------------- | :--------- | :--------------------- | :--------- | :---------------- |
+| `ds{char}`         | 刪除外圍符號     | `"Hello World"`        | `ds"`      | `Hello World`     |
+| `cs{old}{new}`     | 替換外圍符號     | `'Hello World'`        | `cs'"`     | `"Hello World"`   |
+| `cs{old}{new}`     | 替換為括號      | `"Hello"`              | `cs"(`     | `( Hello )` (有空格) |
+| `cs{old}{new}`     | 替換為緊貼括號    | `"Hello"`              | `cs")`     | `(Hello)` (無空格)   |
+| `ys{motion}{char}` | 新增外圍符號     | `total_count` (游標在單詞上) | `ysiw"`    | `"total_count"`   |
+| `ys{motion}{tag}`  | 包覆 HTML 標籤 | `Hello`                | `ysiw<em>` | `<em>Hello</em>`  |
 
 ---
 
