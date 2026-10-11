@@ -64,6 +64,7 @@ ollama rm qwen2.5:7b
 | **[[#串流打字機效果 (stream=True)\|stream=True]]** | **開啟串流輸出模式以逐字產生模型輸出** | 即時打字機視覺呈現、降低長文本回答的等待感知延遲 |
 | **[[#結構化 JSON 輸出 (format="json")\|format="json"]]** | **強制模型僅以特定 JSON 或 Pydantic Schema 格式輸出** | 資料抽取、API 資料對接、結構化資訊解析 |
 | **[[#options 模型超參數配置詳解\|options]]** | **精細控制模型推論隨機性、上下文長度 (num_ctx)、停止詞與硬體資源** | 擴充上下文視窗、程式代碼確定性生成 (temperature=0)、重複懲罰 |
+| **[[#repeat_penalty 重複懲罰與防跳針機制\|repeat_penalty]]** | **抑制模型重複字詞、無限死循環與跳針現象的懲罰係數** | 長文寫作防死循環、調整回溯視窗 (repeat_last_n)、寫程式碼需降至 1.0 |
 | **[[#ollama.ResponseError 伺服器回應與執行錯誤\|ollama.ResponseError]]** | **Ollama 伺服器回傳之 HTTP 狀態碼錯誤或串流中斷例外** | 攔截模型未下載 (404)、不支援圖片 (400) 或推論崩潰 (500) |
 | **[[#ollama.RequestError 請求端錯誤基底類別\|ollama.RequestError]]** | **客戶端請求發送或參數封裝層級之異常** | 請求構建失敗、無效請求格式防禦 |
 | **[[#ConnectionError 服務未啟動或無法連線\|ConnectionError]]** | **無法連線至本機或遠端 Ollama 守護進程** | 檢測 Ollama 服務是否正在運行 (localhost:11434) |
@@ -502,6 +503,96 @@ response_b = ollama.generate(
     options=custom_options
 )
 print("方式 B 產出:", response_b.response)
+```
+
+---
+
+##### repeat_penalty 重複懲罰與防跳針機制
+
+- **使用時機**：當本地模型在推論時陷入「無限跳針」（重複輸出同一句話、同一個片語死循環），或者在長篇文字生成中詞彙過於單調乏味時使用。
+- **語法**：
+  在 `options` 字典或 `ollama.Options` 物件中傳入：
+  ```python
+  options={
+      "repeat_penalty": 1.15,
+      "repeat_last_n": 128,
+      "penalize_newline": False
+  }
+  ```
+- **核心參數詳細拆解**：
+  - **`repeat_penalty` (`float`，預設 `1.1`)**：
+    - **`1.0`**：完全不懲罰（中立）。保持模型原始注意力機制與機率分佈。
+    - **`1.1 ~ 1.2` (推薦日常)**：輕微懲罰。有效預防常見跳針，同時不損害語言連貫性與文法結構。
+    - **`1.2 ~ 1.3`**：中度懲罰。適用於小說創作、長篇敘事與創意發想，顯著增加詞彙多樣性。
+    - **`> 1.5` (過度懲罰危險區)**：模型會因為害怕重複而強行避開合適詞彙，導致出現詭異生造字、文法碎裂甚至胡言亂語。
+    - **`< 1.0`**：反向獎勵重複，極少使用。
+  - **`repeat_last_n` (`int`，預設 `64`)**：
+    - 回溯檢查重複詞彙的視窗大小（單位為 Token 數）。
+    - 若模型產生的死循環句子較長（例如重複整整一段話，超過 64 個 Token），預設的 `64` 將無法捕捉到重複。此時應將其擴大至 `128`、`256` 甚至 `512`。
+    - 設定為 `0` 代表關閉回溯檢查；設定為 `-1` 代表回溯整篇上下文歷史。
+  - **`penalize_newline` (`bool`，預設 `false`)**：
+    - 是否對換行符號 (`\n`) 實施重複懲罰。通常必須保持為 `false`，若設為 `true`，模型會為了避免換行而將所有內容擠在同一行，或在寫代碼時排版崩潰。
+
+> **[生動比喻]**：  
+> - **未開啟懲罰 (`1.0`)**：像「卡帶跳針的唱片機」。自回歸模型看到自己剛才說了這句話，注意力機制認為這句話出現機率極高，於是下一句又接著說一樣的話，陷入無窮迴圈。  
+> - **適度懲罰 (`1.15`)**：像「隨身即時糾察隊」。當模型在最近 128 字內又想挑選剛用過的同一個字詞時，糾察隊輕輕拍一下提示它：「這個詞剛說過了，換個別的說法吧！」  
+> - **過度懲罰 (`> 1.5`)**：像「嚴苛文字獄審查官」。只要任何字說過一次就永久列入黑名單，模型在被逼無奈下只能胡亂拼湊生僻字，甚至連句子的主詞都不敢再提。
+
+---
+
+###### 懲罰計算原理：llama.cpp 乘法懲罰 vs OpenAI 加法懲罰
+
+- **Ollama / llama.cpp 乘法懲罰機制 (`repeat_penalty`)**：
+  針對在 `repeat_last_n` 視窗內出現過的 Token，直接對其未歸一化的對數機率 (Logit) 進行乘除法縮放：
+  - 若原始 $\text{Logit} > 0$，則 $\text{Logit}' = \text{Logit} / \text{repeat\_penalty}$（機率被強力除小）
+  - 若原始 $\text{Logit} \le 0$，則 $\text{Logit}' = \text{Logit} \times \text{repeat\_penalty}$（負值絕對值變大，機率進一步降低）
+- **OpenAI 加法懲罰機制 (`presence_penalty` / `frequency_penalty`)**：
+  - OpenAI 採用的加法公式為：$\text{Logit}' = \text{Logit} - (\text{presence} \times 1 + \text{frequency} \times \text{count})$。
+  - **兩者在 Ollama 中皆支援**，但本地模型（GGUF 體系）原生調用通常優先推薦使用乘法縮放的 `repeat_penalty`，對高機率字詞的壓制效果最為立竿見影。
+
+---
+
+###### 不同應用場景之推薦配置對照表
+
+| 應用任務情境 | 推薦 `repeat_penalty` | 推薦 `repeat_last_n` | 調整理由與核心原則 |
+| :--- | :--- | :--- | :--- |
+| **日常對話問答 / 資料摘要** | `1.1` (預設值) | `64` | 保持回答嚴謹，語句自然流暢不扭曲。 |
+| **小說故事創作 / 腦力激盪** | `1.15 ~ 1.25` | `128 ~ 256` | 迫使模型探索多樣形容詞與敘事視角，避免用詞單一。 |
+| **長文跳針死循環修復** | `1.2 ~ 1.3` | `256 ~ 512` | 擴大回溯視窗，徹底粉碎長週期死循環跳針。 |
+| **程式碼生成 (Coding)** | **`1.0 ~ 1.05`** | `64` | **不可調高**！代碼中的關鍵字 (`def`、`return`) 與變數名本就需高頻重複。 |
+| **結構化 JSON / 資料擷取** | **`1.0`** | `0` | **不可開啟**！防止 JSON Schema 的欄位名稱 (Key) 因被懲罰而被模型篡改換詞。 |
+
+---
+
+###### 程式碼示範：解決跳針問題 vs 程式碼防誤傷配置
+
+```python
+import ollama
+
+# 情境一：處理小說創作，防止用詞重複並擴大回溯視窗
+story_response = ollama.generate(
+    model="qwen2.5:7b",
+    prompt="請描寫一場驚心動魄的太空飛船追逐戰",
+    options={
+        "temperature": 0.8,
+        "repeat_penalty": 1.2,     # 適度提高懲罰，詞彙更豐富
+        "repeat_last_n": 256,      # 擴大回溯至 256 個 Token
+        "penalize_newline": False  # 嚴禁懲罰換行符，保持段落美觀
+    }
+)
+print("小說片段:", story_response.response[:200])
+
+# 情境二：程式碼生成任務，將 repeat_penalty 壓低至 1.0 確保代碼語法正確
+code_response = ollama.chat(
+    model="qwen2.5:7b",
+    messages=[{"role": "user", "content": "請用 Python 寫一個計算費氏數列的函式"}],
+    options={
+        "temperature": 0.0,
+        "repeat_penalty": 1.0,     # 程式碼天條：設為 1.0，允許關鍵字與變數重複出現
+        "seed": 42
+    }
+)
+print("程式碼解答:", code_response.message.content)
 ```
 
 ---
@@ -992,6 +1083,19 @@ except ResponseError as e:
   `num_ctx` 會在模型載入時直接預先配置對應尺寸的 KV Cache 顯存。若顯存空間不足以容納過大的上下文視窗，Ollama 會自動將部分神經網路層由 GPU 降級回 CPU 運算，造成嚴重的跨匯流排資料傳輸瓶頸。
 - **最佳實踐**：
   依照任務實際文本需求設定（例如日常問答 2048~4096，長文檔檢索 8192~16384），切勿盲目填寫極端上限。
+
+---
+
+## 5. 撰寫程式碼或 JSON 時調高 repeat_penalty 引發語法崩潰與變數亂改
+
+> **[核心天條]：編寫程式碼或輸出 JSON 時，repeat_penalty 必須降至 1.0（或關閉）！**
+
+- **錯誤症狀**：
+  模型在撰寫 Python 程式碼時，原本定義了 `current_node`，幾行後卻莫名其妙變成 `present_element` 或 `now_point`；或者在同一個函式中拒絕多次使用 `return` 與 `self`，甚至強行省去換行與縮排，導致代碼直接出現 `SyntaxError` 或 `NameError`。
+- **背後原理**：
+  程式語言本質上高度依賴重複性（例如迴圈變數 `i`、保留字 `def`、`class`、`return`、物件屬性存取）。若開啟了高於 1.1 的 `repeat_penalty`，模型在預測下一個 Token 時，會因為關鍵字剛出現過而將其機率除小，迫使模型挑選同義詞替代，進而破壞了代碼結構的嚴格一致性。
+- **最佳實踐**：
+  在執行程式碼生成、Shell 指令輸出或 JSON 結構化解析任務時，務必將 `repeat_penalty` 設定為 `1.0`（無懲罰）。
 
 ---
 
