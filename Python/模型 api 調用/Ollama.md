@@ -241,19 +241,50 @@ print("對話模板摘要:\n", "\n".join(info.template.splitlines()[:3]))
   - `options`：（可選）超參數設定字典（如 `temperature`, `top_p`）。
   - `stream`：布林值，是否開啟串流輸出，預設 `False`。
 - **回傳值**：
-  - `dict`：包含 `response` 欄位（生成的文字字串）與耗時資訊的字典。
+  - `GenerateResponse` / `dict`：回傳生成回應物件，包含 `response` 生成文字與詳細執行效能指標。支援物件屬性點選 (`response.response`) 與字典鍵名存取 (`response["response"]`) 兩種風格。
+
+###### ollama.generate() 回傳物件 GenerateResponse 欄位說明
+
+| 欄位名稱 | 資料型別 | 說明與存取寫法範例 |
+| :--- | :--- | :--- |
+| **`response`** | `str` | **模型生成的回應文字內容**（非串流模式為完整回覆，串流模式為當前文字片段）。存取：`response.response` 或 `response["response"]` |
+| **`thinking`** | `str` / `None` | **推理模型 (如 DeepSeek-R1) 的思考過程**（僅在啟用思考時存在）。存取：`response.thinking` 或 `response["thinking"]` |
+| **`model`** | `str` | **實際呼叫的模型名稱標籤**（如 `"qwen2.5:7b"`）。存取：`response.model` 或 `response["model"]` |
+| **`created_at`** | `str` | **回應產生的 ISO 8601 時間戳記**。存取：`response.created_at` 或 `response["created_at"]` |
+| **`done`** | `bool` | **回應生成是否完結**（非串流模式固定為 `True`，串流模式最後一個 chunk 為 `True`）。存取：`response.done` 或 `response["done"]` |
+| **`done_reason`** | `str` / `None` | **停止生成的原因**（如 `"stop"` 代表正常生成完畢，`"length"` 代表達 Token 上限）。存取：`response.done_reason` 或 `response["done_reason"]` |
+| **`context`** | `list[int]` / `None` | **截至本次回覆為止的對話歷史 Token 編碼整數清單**。可傳回下一次 `ollama.generate(..., context=response.context)` 實現連續對話。存取：`response.context` 或 `response["context"]` |
+| **`total_duration`** | `int` | **模型處理總耗時**（單位：奈秒 ns，除以 $10^9$ 即為秒數）。存取：`response.total_duration` 或 `response["total_duration"]` |
+| **`load_duration`** | `int` | **模型載入至顯存/記憶體的耗時**（單位：奈秒 ns）。存取：`response.load_duration` 或 `response["load_duration"]` |
+| **`prompt_eval_count`** | `int` | **輸入 Prompt 提示詞的 Token 數量**。存取：`response.prompt_eval_count` 或 `response["prompt_eval_count"]` |
+| **`prompt_eval_duration`** | `int` | **評估/處理輸入提示詞的耗時**（單位：奈秒 ns）。存取：`response.prompt_eval_duration` 或 `response["prompt_eval_duration"]` |
+| **`eval_count`** | `int` | **模型生成輸出的 Token 數量**（生成答覆的長度）。存取：`response.eval_count` 或 `response["eval_count"]` |
+| **`eval_duration`** | `int` | **模型生成解答的耗時**（單位：奈秒 ns）。存取：`response.eval_duration` 或 `response["eval_duration"]` |
+| **`logprobs`** | `list` / `None` | **生成 Token 的對數機率清單**（需在請求時設定 `logprobs=True`）。存取：`response.logprobs` |
+| **`image`** | `str` / `None` | **生圖模型產出的 Base64 編碼圖片資料**（僅生圖模型有效）。存取：`response.image` |
 
 ```python
 import ollama
 
-# 呼叫 generate 直接傳入模型名稱與提示詞
+# 1. 呼叫 generate 直接傳入模型名稱與提示詞
 response = ollama.generate(
     model="qwen2.5:7b",
     prompt="請用繁體中文簡短介紹什麼是離線大語言模型。"
 )
 
-# 取得生成內容
-print(response["response"])
+# 2. 存取回覆內容與執行指標 (支援物件屬性與字典鍵名兩種存取方式)
+print("回覆內容:", response.response)          # 或 response["response"]
+print("花費時間(秒):", response.total_duration / 1e9)
+print("生成 Token 數:", response.eval_count)
+
+# 3. 透過 context 實現延續上下文的多輪對話
+followup = ollama.generate(
+    model="qwen2.5:7b",
+    prompt="它相較於雲端模型有什麼優點？",
+    context=response.context                   # 帶入上一輪的 context 編碼
+)
+
+print("延續回答:", followup.response)
 ```
 
 ---
