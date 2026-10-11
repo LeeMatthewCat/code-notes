@@ -63,6 +63,7 @@ ollama rm qwen2.5:7b
 | **[[#ollama.chat() 多輪對話與對話歷史\|ollama.chat()]]** | **發送包含角色歷史的訊息串列以進行多輪對話** | 打造對話機器人、上下文連續問答、Tool Use 工具調用 |
 | **[[#串流打字機效果 (stream=True)\|stream=True]]** | **開啟串流輸出模式以逐字產生模型輸出** | 即時打字機視覺呈現、降低長文本回答的等待感知延遲 |
 | **[[#結構化 JSON 輸出 (format="json")\|format="json"]]** | **強制模型僅以特定 JSON 或 Pydantic Schema 格式輸出** | 資料抽取、API 資料對接、結構化資訊解析 |
+| **[[#options 模型超參數配置詳解\|options]]** | **精細控制模型推論隨機性、上下文長度 (num_ctx)、停止詞與硬體資源** | 擴充上下文視窗、程式代碼確定性生成 (temperature=0)、重複懲罰 |
 | **[[#ollama.ResponseError 伺服器回應與執行錯誤\|ollama.ResponseError]]** | **Ollama 伺服器回傳之 HTTP 狀態碼錯誤或串流中斷例外** | 攔截模型未下載 (404)、不支援圖片 (400) 或推論崩潰 (500) |
 | **[[#ollama.RequestError 請求端錯誤基底類別\|ollama.RequestError]]** | **客戶端請求發送或參數封裝層級之異常** | 請求構建失敗、無效請求格式防禦 |
 | **[[#ConnectionError 服務未啟動或無法連線\|ConnectionError]]** | **無法連線至本機或遠端 Ollama 守護進程** | 檢測 Ollama 服務是否正在運行 (localhost:11434) |
@@ -400,6 +401,107 @@ response = ollama.chat(
 )
 
 print(response.message.content)
+```
+
+---
+
+##### options 模型超參數配置詳解
+
+- **使用時機**：當需要自訂或精細微調模型的推論行為時使用。`options` 參數在 `ollama.chat()` 與 `ollama.generate()` 中均可傳入，支援以一般 Python 字典 (`dict`) 或 `ollama.Options` 物件宣告。
+- **典型調整場景**：
+  - **精確代碼生成與結構化分析**：將 `temperature` 設為 `0.0` 並指定 `seed`，消除隨機性與幻覺，取得確定且一致的結果。
+  - **長文檔與大量資料閱讀**：將預設僅 2048 的上下文視窗 `num_ctx` 調大至 `8192`、`16384` 或 `32768`。
+  - **防止模型陷入死循環跳針**：調高重複懲罰 `repeat_penalty`（如 `1.1`~`1.3`）並設定 `repeat_last_n`。
+  - **限制生成長度或自訂停止標記**：透過 `num_predict` 限制最大 Token 產出量，或設定 `stop` 清單自訂截斷字串。
+
+> **[生動比喻]**：  
+> - **預設模型調用**：像「開著原廠預設房車」，平穩且通用，但油門靈敏度與後車箱容量固定。  
+> - **`options` 參數**：像「進入車載中控電腦自訂行車模式」：  
+>   - `temperature` 像油門靈敏度（0 是定速巡航不偏不倚走直線，1 是飄移甩尾隨機性大增）；  
+>   - `num_ctx` 像後車箱容量（從手提行李箱擴充為休旅車大行李箱，能塞入更長的文章，但車體變重、佔用更多顯存）；  
+>   - `repeat_penalty` 像循跡防滑系統（防止車輪在原地重複空轉打轉跳針）。
+
+---
+
+###### 1. 推論採樣與隨機性控制 (Sampling & Creativity)
+
+| 參數名稱 | 期待型別 | 預設值 | 說明與典型調整情境 |
+| :--- | :--- | :--- | :--- |
+| **`temperature`** | `float` | `0.8` | 控制生成隨機性與創造力。值越低回答越確定、精準（`0.0`~`0.2` 適合程式碼、數學與資料抽取）；值越高越具發散性（`0.7`~`1.0` 適合創意寫作）。 |
+| **`top_p`** | `float` | `0.9` | 核採樣 (Nucleus Sampling)。只從累積機率達 `top_p` 的候選 Token 中採樣。設為 `0.5` 可排除低機率長尾詞，提高文字嚴謹度。 |
+| **`top_k`** | `int` | `40` | 限制每一步生成僅從機率最高的前 k 個 Token 中選擇。較低值（如 `20`）降低離題風險，較高值增加詞彙豐富度。 |
+| **`num_predict`** | `int` | `-1` / `128` | 模型最大生成輸出的 Token 數量（等同 OpenAI 的 `max_tokens`）。設為 `-1` 代表無限生成直到遇到結束符；設為 `-2` 代表填滿上下文視窗。 |
+| **`seed`** | `int` | `0` | 隨機數種子。設定固定整數並搭配 `temperature: 0` 時，可確保相同輸入產生完全確定且可重現的回答（適合自動化測試）。 |
+| **`stop`** | `list[str]` | `None` | 自訂停止詞清單。當模型生成遇到清單中任何一組字串（如 `["User:", "###", "<|end|>"]`）時，立即終止生成。 |
+| **`mirostat`** | `int` | `0` | 啟用 Mirostat 演算法動態控制困惑度 (Perplexity)。`0` 關閉，`1` 為 Mirostat 1.0，`2` 為 Mirostat 2.0。 |
+| **`mirostat_tau`** | `float` | `5.0` | Mirostat 目標困惑度，較小值使輸出更聚焦緊湊。 |
+| **`mirostat_eta`** | `float` | `0.1` | Mirostat 學習率，影響演算法適應文本變化的反應速度。 |
+| **`tfs_z`** | `float` | `1.0` | 尾部自由採樣 (Tail Free Sampling)。較低值（如 `0.9`）可削減長尾無效詞。 |
+| **`typical_p`** | `float` | `1.0` | 局部典型性採樣參數。 |
+
+---
+
+###### 2. 上下文視窗與重複懲罰 (Context & Penalties)
+
+| 參數名稱 | 期待型別 | 預設值 | 說明與典型調整情境 |
+| :--- | :--- | :--- | :--- |
+| **`num_ctx`** | `int` | `2048` | **上下文視窗大小 (Tokens)**。預設為 2048，若需處理長文、大檔案分析或長期多輪歷史，可調大至 `8192`, `16384`, `32768`（需注意顯存佔用成正比增加）。 |
+| **`repeat_penalty`** | `float` | `1.1` | **重複懲罰係數**。高於 1.0（如 `1.1`~`1.3`）會抑制模型重複輸出相同字詞，防止跳針死循環；設為 `1.0` 則不懲罰。 |
+| **`repeat_last_n`** | `int` | `64` | 回溯檢查重複性的 Token 數量。設為 `0` 關閉，設為 `-1` 則回溯整個上下文長度。 |
+| **`presence_penalty`** | `float` | `0.0` | 存在懲罰。只要詞彙曾在上下文中出現即給予固定扣分，鼓勵模型引入全新話題。 |
+| **`frequency_penalty`** | `float` | `0.0` | 頻率懲罰。依詞彙在歷史中出現的次數成比例扣分，減少重複字詞高頻濫用。 |
+| **`penalize_newline`** | `bool` | `false` | 是否對換行符進行懲罰。 |
+| **`num_keep`** | `int` | `4` | 當上下文視窗溢出時，在開頭保留不被滾動淘汰的提示詞 Token 數量。 |
+
+---
+
+###### 3. 底層運算與硬體調校參數 (Hardware & Load Options)
+
+| 參數名稱 | 期待型別 | 預設值 | 說明與典型調整情境 |
+| :--- | :--- | :--- | :--- |
+| **`num_gpu`** | `int` | 自動 | 卸載 (Offload) 至 GPU 顯存運算的層數。在 macOS Metal 或 CUDA 環境手動指定可精確控制顯存用量。 |
+| **`main_gpu`** | `int` | `0` | 多顯卡環境下指定主卡索引編號。 |
+| **`low_vram`** | `bool` | `false` | 極度缺乏顯存時啟用，犧牲些許速度換取更低顯存開銷。 |
+| **`num_thread`** | `int` | 自動 | CPU 計算時使用的執行緒數量。預設由 Ollama 依實體 CPU 核心數最佳化指派。 |
+| **`num_batch`** | `int` | `512` | Prompt 評估批次大小。調高可在記憶體充足時提升輸入長文字的解析吞吐量。 |
+| **`use_mmap`** | `bool` | `true` | 是否使用記憶體映射 (mmap) 載入模型權重，加速冷啟動並支援分頁。 |
+| **`use_mlock`** | `bool` | `false` | 是否鎖定模型記憶體 (mlock)，防止被作業系統 Swap 交換至硬碟以保持極速。 |
+
+---
+
+###### 4. 程式碼呼叫示範
+
+```python
+import ollama
+from ollama import Options
+
+# 方式 A：以 Python 字典方式傳入 options (最常用且靈活)
+response_a = ollama.chat(
+    model="qwen2.5:7b",
+    messages=[{"role": "user", "content": "請寫出一個快速排序演算法"}],
+    options={
+        "temperature": 0.0,       # 零隨機性，保證代碼輸出精準確定
+        "seed": 42,               # 固定隨機數種子
+        "num_ctx": 8192,          # 擴大上下文長度至 8K Tokens
+        "stop": ["```\n\n"]      # 自訂停止標記
+    }
+)
+print("方式 A 產出:", response_a.message.content)
+
+# 方式 B：以 ollama.Options 具名型別物件傳入 (享有 IDE 型別提示)
+custom_options = Options(
+    temperature=0.7,
+    top_p=0.8,
+    repeat_penalty=1.2,          # 提高重複懲罰，防止長文跳針
+    num_predict=500              # 最多生成 500 個 Token
+)
+
+response_b = ollama.generate(
+    model="qwen2.5:7b",
+    prompt="請寫一段科幻小說開頭",
+    options=custom_options
+)
+print("方式 B 產出:", response_b.response)
 ```
 
 ---
@@ -877,6 +979,19 @@ except ResponseError as e:
     else:
         raise
 ```
+
+---
+
+## 4. 盲目調大 num_ctx 引發顯存爆滿與推論急遽掉速
+
+> **[核心天條]：調大 num_ctx 時需按需分配，避免顯存溢出導致模型卸載回 CPU！**
+
+- **錯誤症狀**：
+  原先每秒可產出 30+ Token 的模型，將 `num_ctx` 設為 65536 或 131072 後，生成速度暴跌至每秒 1~2 Token，電腦風扇狂轉且系統極度卡頓。
+- **背後原理**：
+  `num_ctx` 會在模型載入時直接預先配置對應尺寸的 KV Cache 顯存。若顯存空間不足以容納過大的上下文視窗，Ollama 會自動將部分神經網路層由 GPU 降級回 CPU 運算，造成嚴重的跨匯流排資料傳輸瓶頸。
+- **最佳實踐**：
+  依照任務實際文本需求設定（例如日常問答 2048~4096，長文檔檢索 8192~16384），切勿盲目填寫極端上限。
 
 ---
 
