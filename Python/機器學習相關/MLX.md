@@ -70,9 +70,12 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | :--- | :--- | :--- | :--- |
 | **陣列張量建立** | `torch.tensor([1, 2], device="mps")` | `mx.array([1, 2])` | 原生配置於統一記憶體，無需顯式傳遞至裝置 |
 | **裝置切換與資料搬移** | `x.to("mps")` 或 `x.cpu()` | 零拷貝共享，動態指定 `mx.default_device()` | 消除 PCIe 記憶體複製開銷，CPU/GPU 共享記憶體池 |
+| **矩陣乘法運算** | `torch.matmul(A, B)` 或 `A @ B` | `mx.matmul(A, B)` 或 `A @ B` | 自動調用 Apple Silicon 內部 AMX 矩陣協處理器加速 |
 | **計算圖評估求值** | 即時求值 (Eager Evaluation) | 惰性求值 (Lazy)，顯式 `mx.eval(x)` | 支援動態融合 Metal 計算核，減少記憶體中繼暫存 |
 | **自動微分運算** | 隱式計算圖 `loss.backward()` | 函數式變換 `mx.grad(fn)` 或 `mx.value_and_grad(fn)` | 純函數式高階微分設計，無隱式狀態殘留 |
 | **即時編譯加速 (JIT)** | `torch.compile(model)` | `mx.compile(fn)` | 生成並融合最佳化 Metal 著色核心，大幅提升吞吐量 |
+| **注意力機制加速** | `F.scaled_dot_product_attention` | `mlx.core.fast.scaled_dot_product_attention` | Metal 原生硬體融合注意力核心，大幅降低顯存頻寬消耗 |
+| **旋轉位置編碼加速** | 手寫複數旋轉矩陣乘法 | `mlx.core.fast.rope` | 核心層硬體深度優化，極速計算 RoPE 嵌入 |
 | **模型權限與量化** | 第三方 bitsandbytes 或 GPTQ | `nn.QuantizedLinear` 原生 4-bit / 8-bit | Apple Silicon 硬體原生向量矩陣乘法加速量化 |
 | **大型語言模型推論** | Hugging Face Transformers (`device_map="auto"`) | `mlx_lm` 生態套件 (`mlx_lm.generate`) | 專為 Mac 記憶體頻寬最佳化，推論速度極快 |
 
@@ -86,6 +89,17 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | **[[#mx.eval() 強制觸發惰性運算求值\|mx.eval()]]** | **顯式強制計算惰性求值圖譜並釋放中繼節點** | 批次訓練迴圈、釋放圖暫存、取得具體數值 |
 | **[[#mx.default_device() 查詢或設定預設運算裝置\|mx.default_device()]]** | **查詢或切換預設執行硬體 (GPU / CPU)** | 效能調優、強制特定算子於 CPU 上執行 |
 | **[[#mx.savez() 與 mx.load() 序列化與載入張量權重\|mx.savez() / mx.load()]]** | **將多個張量以 safetensors 或 npz 格式儲存與讀取** | 模型檢查點保存、權重匯出、跨平台參數交換 |
+| **[[#mx.matmul() 與 @ 批次矩陣相乘運算\|mx.matmul() / @]]** | **執行二維或高維張量廣播矩陣乘法運算** | 全連接神經層前向計算、多頭注意力 QK 乘積 |
+| **[[#mx.linalg.norm() 矩陣與向量範數計算\|mx.linalg.norm()]]** | **計算張量之 L1、L2 範數或 Frobenius 矩陣範數** | 權重正則化懲罰、梯度裁剪 (Gradient Clipping) |
+| **[[#mx.linalg.inv() 方陣求逆與線性方程求解\|mx.linalg.inv()]]** | **求解非奇異方陣之逆矩陣** | 線性回歸封閉式解、協方差矩陣求逆、卡爾曼濾波 |
+| **[[#mx.einsum() 愛因斯坦求和約定張量運算\|mx.einsum()]]** | **使用愛因斯坦求和標記法精簡表達複雜多維張量縮併** | 自訂多維注意力權重縮併、雙線性特徵融合 |
+| **[[#mx.softmax() 沿指定軸機率分佈歸一化\|mx.softmax()]]** | **將原始分數轉換為平滑歸一化機率分佈** | 注意力權重生成、分類模型輸出機率評估 |
+| **[[#mx.logsumexp() 數值穩定對數指數和運算\|mx.logsumexp()]]** | **以數值穩定演算法計算 log(sum(exp(x))) 防止溢位** | 自訂交叉熵損失函數、計算配分函數與對數似然 |
+| **[[#mx.clip() 數值截斷與梯度防爆裁剪\|mx.clip()]]** | **將張量所有元素限制在指定上下界區間內** | 防止梯度爆炸、強化學習價值函數截斷 |
+| **[[#mx.topk() 提取前 K 大元素數值與索引\|mx.topk()]]** | **沿指定維度快速提取前 K 個最大數值及其索引位置** | LLM 自回歸生成 Top-K 採樣、推薦系統候選召回 |
+| **[[#fast.scaled_dot_product_attention() Metal 融合縮放點積注意力\|fast.scaled_dot_product_attention()]]** | **硬體融合版縮放點積注意力 (FlashAttention 等級優化)** | Transformer 訓練與推論、大幅降低顯存頻寬消耗 |
+| **[[#fast.rope() 旋轉位置編碼硬體融合加速\|fast.rope()]]** | **原生底層加速算子計算旋轉位置編碼 (RoPE)** | 現代大語言模型 (Llama 3, Qwen) 查詢與鍵向量編碼 |
+| **[[#fast.rms_norm() 硬體融合均方根層歸一化\|fast.rms_norm()]]** | **底層融合計算均方根歸一化 (RMSNorm)** | 現代 Transformer 前向層歸一化極速推論 |
 | **[[#mx.grad() 建立一階純函數微分器\|mx.grad()]]** | **對純函數建立自動微分高階轉換函數** | 純純量損失求導、客製化數學函數最佳化 |
 | **[[#mx.value_and_grad() 同時計算函數值與梯度字典\|mx.value_and_grad()]]** | **單次前向傳播同時取得純量損失值與模型參數梯度** | 神經網路標準訓練步驟、自訂損失反向傳播 |
 | **[[#mx.compile() JIT 即時編譯融合 Metal 計算核\|mx.compile()]]** | **將 Python 函數編譯並融合為最佳化 Metal 著色核心** | 高頻重複執行之訓練步驟加速、推論延遲降低 |
@@ -93,6 +107,9 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | **[[#nn.Module 神經網路模型抽象基底類別\|nn.Module]]** | **所有神經網路層與模型架構的抽象基底類別** | 自訂網路模型、模組參數生命週期管理 |
 | **[[#nn.Linear 線性全連接神經層\|nn.Linear]]** | **執行仿射線性變換 (y = xW^T + b)** | 特徵降維、投影層、多層感知機 (MLP) 構建 |
 | **[[#nn.QuantizedLinear 4-bit 與 8-bit 硬體量化線性層\|nn.QuantizedLinear]]** | **在 Metal 原生執行仿射低位元權重矩陣乘法** | 本地大語言模型高能效推論、顯存極致壓縮 |
+| **[[#nn.RMSNorm 均方根層歸一化層\|nn.RMSNorm]]** | **現代大語言模型必備之無偏置均方根正規化模組** | 構建 Llama 3、Mistral 等架構之 Pre-Norm 層 |
+| **[[#nn.MultiHeadAttention 多頭自注意力神經層\|nn.MultiHeadAttention]]** | **經典 Transformer 多頭注意力機制神經網路模組** | 序列特徵建模、長文字自注意力表示提取 |
+| **[[#nn.Conv2d 二維卷積神經網路層\|nn.Conv2d]]** | **對影像或網格狀資料執行二維空間特徵卷積提取** | 電腦視覺影像分類、卷積神經網絡 (CNN) 骨幹 |
 | **[[#nn.Sequential 順序式神經網路容器\|nn.Sequential]]** | **將多個神經網路層按宣告順序串聯執行** | 快速搭建前饋神經網路、卷積特徵提取層 |
 | **[[#nn.losses.cross_entropy() 交叉熵損失計算函式\|cross_entropy()]]** | **計算預測機率對數與真實標籤之交叉熵損失** | 多類別分類任務、語言模型下一個 Token 預測 |
 | **[[#optim.AdamW 權重衰減 Adam 優化器\|optim.AdamW]]** | **結合動量、自適應學習率與獨立權重衰減的優化演算法** | Transformer 訓練、神經網路主流參數更新 |
@@ -199,6 +216,303 @@ mx.savez("checkpoint.npz", **weights)
 # 2. 自本機檔案載入權重
 loaded = mx.load("checkpoint.npz")
 print(loaded["w"])  # 假設印出：array([1, 2], dtype=float32)
+```
+
+---
+
+# 機器學習線性代數與張量運算 (mlx.core & linalg)
+
+##### mx.matmul() 與 @ 批次矩陣相乘運算
+
+- **使用時機**：計算神經網路權重前向線性投影、特徵變換或注意力矩陣相乘時使用。
+- **語法**：`mx.matmul(a, b)` 或使用運算子 `a @ b`
+- **參數說明**：
+  - `a`：形狀為 `(..., M, K)` 的多維張量。
+  - `b`：形狀為 `(..., K, N)` 的多維張量。
+- **回傳值**：
+  - `mx.array`：形狀為 `(..., M, N)` 的相乘結果張量。
+
+```python
+import mlx.core as mx
+
+# 1. 定義特徵矩陣與權重矩陣
+x = mx.random.normal((32, 128))
+w = mx.random.normal((128, 64))
+
+# 2. 使用 @ 運算子調用 AMX 矩陣乘法加速
+y = x @ w
+mx.eval(y)
+print(y.shape)  # 假設印出：(32, 64)
+```
+
+---
+
+##### mx.linalg.norm() 矩陣與向量範數計算
+
+- **使用時機**：計算向量長度、正則化損失懲罰項或在訓練迴圈中執行全域梯度裁剪 (Gradient Clipping) 時使用。
+- **語法**：`mx.linalg.norm(a, ord=None, axis=None, keepdims=False)`
+- **參數說明**：
+  - `a`：輸入多維張量。
+  - `ord`：範數階數（預設為 2 即 Euclidean L2 範數；可指定 `1` 或 `"fro"`）。
+  - `axis`：計算軸向（整數或元組；若為 `None` 則展平計算全域範數）。
+  - `keepdims`：是否保留原始維度大小。
+- **回傳值**：
+  - `mx.array`：指定軸向上的範數張量。
+
+```python
+import mlx.core as mx
+
+# 1. 計算單一特徵向量的 L2 範數 (長度)
+v = mx.array([3.0, 4.0])
+l2_norm = mx.linalg.norm(v)
+print(l2_norm.item())  # 假設印出：5.0
+
+# 2. 模擬多梯度張量之全域梯度範數計算
+grad = mx.random.normal((100, 50))
+total_norm = mx.linalg.norm(grad)
+max_norm = 1.0
+
+# 3. 梯度裁剪: 若超過閾值則按比例縮小
+clipped_grad = mx.where(total_norm > max_norm, grad * (max_norm / total_norm), grad)
+mx.eval(clipped_grad)
+```
+
+---
+
+##### mx.linalg.inv() 方陣求逆與線性方程求解
+
+- **使用時機**：計算常態線性回歸閉合解、協方差矩陣求逆或多元高斯分佈機率密度計算時使用。
+- **語法**：`mx.linalg.inv(a)`
+- **參數說明**：
+  - `a`：形狀為 `(..., N, N)` 的非奇異二維方陣或批次方陣。
+- **回傳值**：
+  - `mx.array`：對應的逆矩陣張量，滿足 `a @ inv(a) = I`。
+
+```python
+import mlx.core as mx
+
+# 1. 建立 2x2 可逆方陣
+mat = mx.array([[1.0, 2.0], [3.0, 4.0]])
+
+# 2. 求解逆矩陣
+inv_mat = mx.linalg.inv(mat)
+
+# 3. 驗證矩陣乘積為單位矩陣
+identity = mat @ inv_mat
+mx.eval(identity)
+print(identity)  # 假設印出：array([[1, 0], [0, 1]], dtype=float32)
+```
+
+---
+
+##### mx.einsum() 愛因斯坦求和約定張量運算
+
+- **使用時機**：需要以一行優雅語法處理跨維度轉置、矩陣批量相乘、對角線提取或多頭注意力張量縮併時使用。
+- **語法**：`mx.einsum(equation, *operands)`
+- **參數說明**：
+  - `equation`：求和約定字串（例如 `"bth,bsh->bts"` 代表多頭注意力分數矩陣乘法）。
+  - `*operands`：參與縮併的張量運算元清單。
+- **回傳值**：
+  - `mx.array`：依據約定縮併後的新張量。
+
+```python
+import mlx.core as mx
+
+# 批次為 4，查詢序列長度 8，鍵長度 16，特徵維度 32
+q = mx.random.normal((4, 8, 32))
+k = mx.random.normal((4, 16, 32))
+
+# 利用 einsum 計算點積注意力矩陣: bth, bsh -> bts
+attn_scores = mx.einsum("bth,bsh->bts", q, k)
+mx.eval(attn_scores)
+print(attn_scores.shape)  # 假設印出：(4, 8, 16)
+```
+
+---
+
+# 機器學習數值聚合與機率函數 (Math & Statistics)
+
+##### mx.softmax() 沿指定軸機率分佈歸一化
+
+- **使用時機**：將分類模型輸出的 Logits 或自注意力矩陣分數轉換為數值總和為 1.0 的平滑機率分佈時使用。
+- **語法**：`mx.softmax(a, axis=-1)`
+- **參數說明**：
+  - `a`：輸入任意維度之實數張量。
+  - `axis`：執行 Softmax 歸一化的軸向（預設為最後一軸 `-1`）。
+- **回傳值**：
+  - `mx.array`：與輸入形狀完全相同且元素皆介於 (0, 1) 的機率張量。
+
+```python
+import mlx.core as mx
+
+# 1. 分類模型原始未歸一化預測分數
+logits = mx.array([2.0, 1.0, 0.1])
+
+# 2. 轉換為機率分佈
+probs = mx.softmax(logits)
+print(probs)  # 假設印出：array([0.659, 0.242, 0.098], dtype=float32)
+print(mx.sum(probs).item())  # 假設印出：1.0
+```
+
+---
+
+##### mx.logsumexp() 數值穩定對數指數和運算
+
+- **使用時機**：自訂數值穩定的交叉熵損失函數、計算機率圖模型邊際分佈或對數配分函數時使用。底層內部自動減去最大值，徹底防止 $e^x$ 浮點數溢位 (Overflow)。
+- **語法**：`mx.logsumexp(a, axis=None, keepdims=False)`
+- **參數說明**：
+  - `a`：輸入張量。
+  - `axis`：求和軸向（預設為全域）。
+  - `keepdims`：是否保持原始維度階數。
+- **回傳值**：
+  - `mx.array`：數值穩定後的對數指數和純量或張量。
+
+```python
+import mlx.core as mx
+
+# 即使輸入數值極大 (傳統 exp(1000) 會直接噴 inf 溢位)
+large_logits = mx.array([1000.0, 1001.0, 1002.0])
+
+# logsumexp 原生具備防溢位優化
+result = mx.logsumexp(large_logits)
+print(result.item())  # 假設印出：1002.4076 (計算精準，絕不溢位崩潰)
+```
+
+---
+
+##### mx.clip() 數值截斷與梯度防爆裁剪
+
+- **使用時機**：限制資料數值上下限邊界、對數運算前防止輸入 0（取極小值 epsilon）、或針對單一梯度進行數值截斷時使用。
+- **語法**：`mx.clip(a, a_min=None, a_max=None)`
+- **參數說明**：
+  - `a`：輸入多維張量。
+  - `a_min`：允許的下界數值（低於此值會被替換為 `a_min`）。
+  - `a_max`：允許的上界數值（高於此值會被替換為 `a_max`）。
+- **回傳值**：
+  - `mx.array`：截斷後數值範圍落在指定區間內的張量。
+
+```python
+import mlx.core as mx
+
+x = mx.array([-5.0, 0.5, 10.0])
+
+# 限制在 [0.0, 1.0] 區間
+clipped = mx.clip(x, a_min=0.0, a_max=1.0)
+print(clipped)  # 假設印出：array([0, 0.5, 1], dtype=float32)
+```
+
+---
+
+##### mx.topk() 提取前 K 大元素數值與索引
+
+- **使用時機**：大語言模型自回歸生成時進行 Top-K 隨機採樣、分類任務計算 Top-K 準確率或推薦系統取最高推薦分數候選時使用。
+- **語法**：`mx.topk(a, k, axis=-1)`
+- **參數說明**：
+  - `a`：輸入多維張量。
+  - `k`：整數，需要保留的最大元素數量。
+  - `axis`：操作維度軸向（預設為 `-1`）。
+- **回傳值**：
+  - `tuple[values, indices]`：由前 K 大數值張量與其對應原始索引張量組成的元組。
+
+```python
+import mlx.core as mx
+
+# 詞彙表中各 Token 的未歸一化 Logits
+logits = mx.array([0.1, 4.5, 1.2, 8.9, 3.2])
+
+# 提取前 2 大最可能的候選 Token 數值與對應索引
+top_values, top_indices = mx.topk(logits, k=2)
+print(top_indices)  # 假設印出：array([3, 1], dtype=uint32)
+print(top_values)   # 假設印出：array([8.9, 4.5], dtype=float32)
+```
+
+---
+
+# Metal 硬體級深度加速算子 (mlx.core.fast)
+
+Apple 團隊在 `mlx.core.fast` 模組中實作了數個專門針對 Apple Silicon 架構最佳化的 Metal 底層融合著色核。這些算子將記憶體頻寬需求降至理論極限，是 MLX 運行現代大模型速度能比肩甚至超越專用加速卡的技術核心。
+
+##### fast.scaled_dot_product_attention() Metal 融合縮放點積注意力
+
+- **使用時機**：訓練或推論 Transformer 架構時計算自注意力機制 (Self-Attention) 的**最高效核心算子**。底層將矩陣乘法、縮放因子、遮罩掩碼與 Softmax 合併在單一 GPU 核心循環中，不將完整的 $N 	imes N$ 注意力矩陣實體寫入記憶體，顯存消耗降為 $O(N)$。
+- **語法**：`fast.scaled_dot_product_attention(queries, keys, values, scale=None, mask=None)`
+- **參數說明**：
+  - `queries`：查詢張量，形狀為 `(B, n_q_heads, L, D)`。
+  - `keys`：鍵張量，形狀為 `(B, n_k_heads, S, D)`。
+  - `values`：值張量，形狀為 `(B, n_k_heads, S, D)`。
+  - `scale`：縮放因子純量（預設為 `1.0 / sqrt(D)`）。
+  - `mask`：可選因果注意力遮罩 (Causal Mask) 或填充掩碼張量。
+- **回傳值**：
+  - `mx.array`：形狀為 `(B, n_q_heads, L, D)` 的注意力輸出張量。
+
+```python
+import mlx.core as mx
+import mlx.core.fast as fast
+
+# 批次 2，頭數 8，序列長度 128，頭維度 64
+q = mx.random.normal((2, 8, 128, 64))
+k = mx.random.normal((2, 8, 128, 64))
+v = mx.random.normal((2, 8, 128, 64))
+
+# 調用硬體融合加速注意力
+out = fast.scaled_dot_product_attention(q, k, v)
+mx.eval(out)
+print(out.shape)  # 假設印出：(2, 8, 128, 64)
+```
+
+---
+
+##### fast.rope() 旋轉位置編碼硬體融合加速
+
+- **使用時機**：現代大語言模型（如 Llama 3、Mistral、Qwen 2.5、Gemma）在計算注意力前，對 Query 與 Key 向量施加旋轉位置編碼 (Rotary Positional Embedding) 時使用。底層直接以融合著色核完成交錯複數旋轉運算。
+- **語法**：`fast.rope(x, dims, traditional=False, base=10000.0, scale=1.0, offset=0)`
+- **參數說明**：
+  - `x`：輸入張量，形狀為 `(B, n_heads, L, D)`。
+  - `dims`：需要套用旋轉位置編碼的維度數量（通常等於頭維度 `D`）。
+  - `traditional`：布林值，設定為 `False` 代表採用現代交錯旋轉模式。
+  - `base`：RoPE 頻率基底（現代模型常用 `10000.0` 或 `500000.0`）。
+  - `offset`：當前 Token 在上下文中的起始絕對位置索引。
+- **回傳值**：
+  - `mx.array`：注入旋轉位置編碼後之張量。
+
+```python
+import mlx.core as mx
+import mlx.core.fast as fast
+
+# 模擬單一 Query 向量，形狀: (批次 1, 頭數 4, 序列長度 16, 頭維度 64)
+q = mx.random.normal((1, 4, 16, 64))
+
+# 套用硬體融合旋轉位置編碼
+q_roped = fast.rope(q, dims=64, base=10000.0, offset=0)
+mx.eval(q_roped)
+print(q_roped.shape)  # 假設印出：(1, 4, 16, 64)
+```
+
+---
+
+##### fast.rms_norm() 硬體融合均方根層歸一化
+
+- **使用時機**：現代大型語言模型大多捨棄了傳統帶有均值漂移與偏置的 LayerNorm，全面轉向運算更輕快的 RMSNorm。`fast.rms_norm` 在單個 Metal 核心內同步完成平方和統計、開根號與權重縮放，比 Python 手寫層提速數倍。
+- **語法**：`fast.rms_norm(x, weight, eps=1e-5)`
+- **參數說明**：
+  - `x`：輸入張量，形狀為 `(..., D)`。
+  - `weight`：形狀為 `(D,)` 的可學習縮放係數向量。
+  - `eps`：極小常數數值，防止分母除以零。
+- **回傳值**：
+  - `mx.array`：經過均方根正規化後之張量。
+
+```python
+import mlx.core as mx
+import mlx.core.fast as fast
+
+hidden_dim = 1024
+x = mx.random.normal((2, 64, hidden_dim))
+w = mx.ones((hidden_dim,))
+
+# 硬體融合極速歸一化
+normed = fast.rms_norm(x, weight=w, eps=1e-6)
+mx.eval(normed)
+print(normed.shape)  # 假設印出：(2, 64, 1024)
 ```
 
 ---
@@ -398,6 +712,85 @@ qlinear = nn.QuantizedLinear.from_linear(
 x = mx.random.normal((1, 1024))
 out = qlinear(x)
 print(out.shape)  # 假設印出：(1, 1024)
+```
+
+---
+
+##### nn.RMSNorm 均方根層歸一化層
+
+- **使用時機**：構建現代大型語言模型（Llama 3、Qwen、DeepSeek）的核心歸一化層。捨棄傳統均值計算與偏置參數，僅依據均方根統計縮放特徵，具備顯著更優的數值穩定度與硬體推論吞吐量。
+- **語法**：`nn.RMSNorm(dims, eps=1e-5)`
+- **參數說明**：
+  - `dims`：歸一化維度大小。
+  - `eps`：極小常數，防止除以零。
+- **回傳值**：
+  - 均方根層歸一化神經模組實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 初始化 RMSNorm 層
+norm_layer = nn.RMSNorm(dims=512, eps=1e-6)
+
+x = mx.random.normal((4, 32, 512))
+out = norm_layer(x)
+mx.eval(out)
+print(out.shape)  # 假設印出：(4, 32, 512)
+```
+
+---
+
+##### nn.MultiHeadAttention 多頭自注意力神經層
+
+- **使用時機**：搭建 Transformer 編碼器、解碼器或各類序列特徵提取模型時使用。內部自動封裝 Query、Key、Value 線性投影、縮放點積注意力與最終輸出線性映射。
+- **語法**：`nn.MultiHeadAttention(dims, num_heads, bias=True)`
+- **參數說明**：
+  - `dims`：輸入與輸出特徵總維度。
+  - `num_heads`：注意力頭數量（必須能被 `dims` 整除）。
+- **回傳值**：
+  - 多頭注意力模組實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 512 維度，8 個注意力頭 (每個頭 64 維)
+mha = nn.MultiHeadAttention(dims=512, num_heads=8)
+
+x = mx.random.normal((2, 16, 512))
+out = mha(queries=x, keys=x, values=x)
+mx.eval(out)
+print(out.shape)  # 假設印出：(2, 16, 512)
+```
+
+---
+
+##### nn.Conv2d 二維卷積神經網路層
+
+- **使用時機**：處理圖像識別、卷積神經網路骨幹 (CNN) 或多模態模型視覺編碼器 (Vision Transformer Patch 投影) 時使用。
+- **語法**：`nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True)`
+- **參數說明**：
+  - `in_channels`：輸入通道數。
+  - `out_channels`：輸出通道數（卷積核數量）。
+  - `kernel_size`：卷積核尺寸（整數或雙整數元組）。
+  - `stride`：步長大小。
+  - `padding`：邊界填充大小。
+- **回傳值**：
+  - 二維卷積層模組實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 輸入 3 通道 (RGB)，輸出 16 通道，3x3 卷積核
+conv = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1)
+
+# 注意：MLX 預設使用通道在後的維度佈局 (Batch, Height, Width, Channels)
+img = mx.random.normal((1, 32, 32, 3))
+feat = conv(img)
+mx.eval(feat)
+print(feat.shape)  # 假設印出：(1, 32, 32, 16)
 ```
 
 ---
@@ -613,4 +1006,23 @@ if epoch % 10 == 0:
     mx.eval(loss)
     if loss.item() < 0.001:
         break
+```
+
+---
+
+## 5. 於 GPU 上使用雙精度浮點數 float64 觸發降速或崩潰
+
+- **錯誤症狀**：執行帶有 `float64` 型別的張量運算時，效能雪崩式暴跌，或拋出 Metal 不支援該型別的執行期例外。
+- **背後原理**：Apple Silicon 的 GPU 架構專為單精度 (FP32) 與半精度 (FP16 / BF16) 深度學習打造，硬體上並未配備原生 64 位元雙精度 (FP64) 浮點數硬體計算單元。
+- **記憶口訣**：Apple GPU 無雙精，預設一律 float32，訓練推論走 bfloat16。
+
+```python
+# [錯誤寫法]：強制使用 float64 在 GPU 上運行
+a = mx.array([1.0, 2.0], dtype=mx.float64)
+b = mx.array([3.0, 4.0], dtype=mx.float64)
+c = a @ b  # 降速或引發 Metal 算子執行期異常！
+
+# [正確寫法]：採用硬體原生支援之 float32 或 bfloat16
+a = mx.array([1.0, 2.0], dtype=mx.float32)
+b = mx.array([3.0, 4.0], dtype=mx.bfloat16)
 ```
