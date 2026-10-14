@@ -70,6 +70,7 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | :--- | :--- | :--- | :--- |
 | **陣列張量建立** | `torch.tensor([1, 2], device="mps")` | `mx.array([1, 2])` | 原生配置於統一記憶體，無需顯式傳遞至裝置 |
 | **裝置切換與資料搬移** | `x.to("mps")` 或 `x.cpu()` | 零拷貝共享，動態指定 `mx.default_device()` | 消除 PCIe 記憶體複製開銷，CPU/GPU 共享記憶體池 |
+| **隨機數生成模式** | 僅支援全域隱式狀態 `torch.manual_seed(42)` | 原生雙軌支援：全域狀態 (`mx.random.seed`) 與 JAX 風格無狀態金鑰 (`mx.random.key` / `split`) | 消除多執行緒並行計算的隨機衝突，原生相容純函數式編譯與變換 |
 | **矩陣乘法運算** | `torch.matmul(A, B)` 或 `A @ B` | `mx.matmul(A, B)` 或 `A @ B` | 自動調用 Apple Silicon 內部 AMX 矩陣協處理器加速 |
 | **計算圖評估求值** | 即時求值 (Eager Evaluation) | 惰性求值 (Lazy)，顯式 `mx.eval(x)` | 支援動態融合 Metal 計算核，減少記憶體中繼暫存 |
 | **自動微分運算** | 隱式計算圖 `loss.backward()` | 函數式變換 `mx.grad(fn)` 或 `mx.value_and_grad(fn)` | 純函數式高階微分設計，無隱式狀態殘留 |
@@ -89,6 +90,17 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | **[[#mx.eval() 強制觸發惰性運算求值\|mx.eval()]]**                                                          | **顯式強制計算惰性求值圖譜並釋放中繼節點**                     | 批次訓練迴圈、釋放圖暫存、取得具體數值                |
 | **[[#mx.default_device() 查詢或設定預設運算裝置\|mx.default_device()]]**                                     | **查詢或切換預設執行硬體 (GPU / CPU)**                 | 效能調優、強制特定算子於 CPU 上執行               |
 | **[[#mx.savez() 與 mx.load() 序列化與載入張量權重\|mx.savez() / mx.load()]]**                                | **將多個張量以 safetensors 或 npz 格式儲存與讀取**        | 模型檢查點保存、權重匯出、跨平台參數交換               |
+| **[[#mx.random.seed() 設定全域隨機種子\|mx.random.seed()]]** | **設定全域 PRNG 隨機狀態種子數值** | 快速原型開發、腳本執行全域隨機性重現 |
+| **[[#mx.random.key() 建立純函數式 PRNG 密鑰\|mx.random.key()]]** | **建立無狀態純函數式亂數生成密鑰** | 純函數式隨機計算、多執行緒並行隨機採樣 |
+| **[[#mx.random.split() 分割無狀態 PRNG 子金鑰\|mx.random.split()]]** | **自現有金鑰衍生分割產生多個獨立子金鑰** | 分支隨機計算、避免平行迭代隨機序列相關性 |
+| **[[#mx.random.normal() 常態分佈高斯取樣\|mx.random.normal()]]** | **生成符合常態高斯分佈之多維隨機張量** | 權重矩陣初始化、擴散模型前向加噪、高斯雜訊擾動 |
+| **[[#mx.random.truncated_normal() 截斷常態分佈取樣\|mx.random.truncated_normal()]]** | **生成去除極端離群值之截斷常態分佈張量** | Transformer / ViT 權重初始化、早期訓練穩定度維護 |
+| **[[#mx.random.uniform() 均勻分佈隨機取樣\|mx.random.uniform()]]** | **在指定連續區間內生成均勻分佈隨機數** | 權重均勻初始化 (Xavier)、超參數隨機搜尋 |
+| **[[#mx.random.bernoulli() 伯努利二項分佈遮罩\|mx.random.bernoulli()]]** | **依指定機率生成布林二元隨機遮罩張量** | 自訂實現 Dropout 層、隨機深度 (Stochastic Depth) |
+| **[[#mx.random.randint() 離散均勻整數取樣\|mx.random.randint()]]** | **在指定整數區間內均勻抽取離散整數張量** | 隨機空間裁切座標、抽樣類別標籤、雜湊索引生成 |
+| **[[#mx.random.categorical() 類別分佈對數機率採樣\|mx.random.categorical()]]** | **依據未歸一化對數機率分佈進行隨機離散抽樣** | LLM 文本生成 Temperature 採樣、RL 動作選取 |
+| **[[#mx.random.permutation() 隨機置換與陣列洗牌\|mx.random.permutation()]]** | **對整數序列或多維陣列沿指定軸隨機洗牌** | 訓練週期 (Epoch) 資料集隨機洗牌、樣本亂序打亂 |
+| **[[#mx.random.gumbel() 耿貝爾分佈取樣\|mx.random.gumbel()]]** | **生成標準耿貝爾分佈隨機變數張量** | Gumbel-Max 技巧、Gumbel-Softmax 可微分重參數化 |
 | **[[#mx.matmul() 與 @ 批次矩陣相乘運算\|mx.matmul() / @]]**                                                | **執行二維或高維張量廣播矩陣乘法運算**                       | 全連接神經層前向計算、多頭注意力 QK 乘積             |
 | **[[#mx.linalg.norm() 矩陣與向量範數計算\|mx.linalg.norm()]]**                                             | **計算張量之 L1、L2 範數或 Frobenius 矩陣範數**          | 權重正則化懲罰、梯度裁剪 (Gradient Clipping)   |
 | **[[#mx.linalg.inv() 方陣求逆與線性方程求解\|mx.linalg.inv()]]**                                             | **求解非奇異方陣之逆矩陣**                             | 線性回歸封閉式解、協方差矩陣求逆、卡爾曼濾波             |
@@ -216,6 +228,297 @@ mx.savez("checkpoint.npz", **weights)
 # 2. 自本機檔案載入權重
 loaded = mx.load("checkpoint.npz")
 print(loaded["w"])  # 假設印出：array([1, 2], dtype=float32)
+```
+
+---
+
+# 隨機數生成與機率取樣 (mlx.core.random)
+
+在機器學習與深度學習中，隨機數廣泛應用於模型權重初始化、資料隨機增強、Dropout 遮罩、大語言模型取樣生成以及強化學習探索。
+
+MLX 提供極具特色的**雙軌隨機數生成架構 (Dual PRNG Design)**：
+- **全域有狀態模式 (NumPy / PyTorch 風格)**：透過 `mx.random.seed()` 設定全域狀態，後續呼叫隨機函式時無需手動傳遞密鑰，簡潔直觀。
+- **純函數無狀態金鑰模式 (JAX 風格)**：透過 `mx.random.key()` 顯式建立金鑰張量，每次隨機運算必須傳入金鑰並透過 `mx.random.split()` 衍生新金鑰。這種設計徹底消除全域隱式副作用，確保多執行緒平行計算、分散式訓練與 `mx.compile()` JIT 編譯下的 100% 確定性可重現。
+
+> **[生動比喻]**：  
+> - **全域有狀態模式**：像放在公共大廳的自動發牌機，任何人去抽牌都會推進機器的同一個內部指針。若兩位廚師 (多執行緒) 同時伸手，拿到的牌序會相互干擾。  
+> - **純函數無狀態金鑰模式**：像每位廚師各自領取一本嚴密編號的「密碼金鑰本」。每次取樣前撕下當前頁並衍生出下一頁密碼，彼此完全獨立、絕不打架，即便時空重來也能發出完全一致的牌序！
+
+---
+
+##### mx.random.seed() 設定全域隨機種子
+
+- **使用時機**：在一般腳本或快速原型開發中設定全域偽隨機數生成器 (PRNG) 狀態，確保後續隨機操作之實驗可重現性。
+- **語法**：`mx.random.seed(seed)`
+- **參數說明**：
+  - `seed`：非負整數種子數值。
+- **回傳值**：
+  - `None`：原位更新框架內部全域 PRNG 狀態。
+
+```python
+import mlx.core as mx
+
+# 1. 設定全域隨機種子
+mx.random.seed(42)
+
+# 2. 生成隨機數 (兩次執行產出相同數值)
+x = mx.random.normal((2, 2))
+print(x)  # 假設印出：array([[0.102, -0.428], [0.891, 0.145]], dtype=float32)
+```
+
+---
+
+##### mx.random.key() 建立純函數式 PRNG 密鑰
+
+- **使用時機**：在需要嚴格無副作用、平行資料處理或函數式變換 (`mx.vmap`、`mx.compile`) 的場景下，初始化無狀態隨機金鑰。
+- **語法**：`mx.random.key(seed)`
+- **參數說明**：
+  - `seed`：非負整數種子數值。
+- **回傳值**：
+  - `mx.array`：長度為 2、型別為 `uint32` 的不可變隨機金鑰張量。
+
+```python
+import mlx.core as mx
+
+# 建立無狀態 PRNG 初始金鑰
+key = mx.random.key(2026)
+print(key)  # 假設印出：array([0, 2026], dtype=uint32)
+```
+
+---
+
+##### mx.random.split() 分割無狀態 PRNG 子金鑰
+
+- **使用時機**：從現有 PRNG 金鑰中衍生分割出多個相互獨立的新金鑰，供多個神經網路分支、不同批次樣本或後續步驟使用。
+- **語法**：`mx.random.split(key, num=2)`
+- **參數說明**：
+  - `key`：現有的 PRNG 密鑰張量。
+  - `num`：整數，需要分割生成的子金鑰數量（預設為 2）。
+- **回傳值**：
+  - `tuple[mx.array, ...]` 或 `mx.array`：由獨立新金鑰組成的元組或堆疊張量。
+
+```python
+import mlx.core as mx
+
+key = mx.random.key(1234)
+
+# 1. 分割為兩個獨立金鑰: 一個供當前操作，一個留給下一步
+key, subkey = mx.random.split(key)
+
+# 2. 使用子金鑰進行取樣
+sample = mx.random.normal((3,), key=subkey)
+print(sample.shape)  # 假設印出：(3,)
+```
+
+---
+
+##### mx.random.normal() 常態分佈高斯取樣
+
+- **使用時機**：深度學習模型權重隨機初始化、向輸入特徵注入高斯雜訊擾動、擴散模型 (Diffusion Models) 前向加噪過程時使用。
+- **語法**：`mx.random.normal(shape, loc=0.0, scale=1.0, dtype=mx.float32, key=None)`
+- **參數說明**：
+  - `shape`：輸出多維張量維度大小序列（如 `(32, 128)`）。
+  - `loc`：高斯分佈之平均值 $\mu$（預設為 0.0）。
+  - `scale`：高斯分佈之標準差 $\sigma$（預設為 1.0）。
+  - `dtype`：可選浮點數型別（預設為 `mx.float32`）。
+  - `key`：可選無狀態 PRNG 金鑰；若未提供則自動調用全域 PRNG 狀態。
+- **回傳值**：
+  - `mx.array`：符合常態分佈 $\mathcal{N}(\mu, \sigma^2)$ 之多維隨機張量。
+
+```python
+import mlx.core as mx
+
+# 1. 有狀態全域取樣
+w = mx.random.normal((64, 32), loc=0.0, scale=0.02)
+print(w.shape)  # 假設印出：(64, 32)
+
+# 2. 無狀態金鑰取樣 (完全可重現)
+key = mx.random.key(99)
+noise = mx.random.normal((10,), key=key)
+print(noise.dtype)  # 假設印出：float32
+```
+
+---
+
+##### mx.random.truncated_normal() 截斷常態分佈取樣
+
+- **使用時機**：用於神經網路（特別是 Transformer、BERT 與 ViT）權重矩陣初始化。能剔除超過指定標準差閾值的極端離群值，避免早期梯度爆炸並維持訓練穩定度。
+- **語法**：`mx.random.truncated_normal(lower, upper, shape=None, dtype=mx.float32, key=None)`
+- **參數說明**：
+  - `lower`：截斷下界純量或張量（例如 $-2.0$）。
+  - `upper`：截斷上界純量或張量（例如 $+2.0$）。
+  - `shape`：輸出張量維度形狀。
+  - `dtype`：可選浮點數資料型別（預設為 `mx.float32`）。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：數值嚴格限定於 $[lower, upper]$ 區間內之常態分佈張量。
+
+```python
+import mlx.core as mx
+
+# 初始化 Linear 層權重，數值截斷在 [-2.0, 2.0] 標準差區間
+weights = mx.random.truncated_normal(lower=-2.0, upper=2.0, shape=(128, 64))
+mx.eval(weights)
+print(mx.min(weights) >= -2.0)  # 假設印出：array(True, dtype=bool)
+print(mx.max(weights) <= 2.0)   # 假設印出：array(True, dtype=bool)
+```
+
+---
+
+##### mx.random.uniform() 均勻分佈隨機取樣
+
+- **使用時機**：隨機超參數網格搜尋、權重均勻初始化（如 Xavier Uniform 或 He Uniform）、資料擴增隨機縮放因子生成時使用。
+- **語法**：`mx.random.uniform(low=0.0, high=1.0, shape=None, dtype=mx.float32, key=None)`
+- **參數說明**：
+  - `low`：區間下界數值（包含，預設 0.0）。
+  - `high`：區間上界數值（不包含，預設 1.0）。
+  - `shape`：輸出張量維度形狀。
+  - `dtype`：可選浮點數型別。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：數值均勻落在 $[low, high)$ 區間之隨機張量。
+
+```python
+import mlx.core as mx
+
+# 1. 生成 [0, 1) 區間連續隨機數
+u = mx.random.uniform(shape=(4, 4))
+print(u.shape)  # 假設印出：(4, 4)
+
+# 2. 模擬 Xavier 均勻初始化: U(-a, a)
+limit = (6.0 / (128 + 64)) ** 0.5
+xavier_w = mx.random.uniform(low=-limit, high=limit, shape=(128, 64))
+```
+
+---
+
+##### mx.random.bernoulli() 伯努利二項分佈遮罩
+
+- **使用時機**：自訂神經網路 Dropout 正規化層、隨機深度 (Stochastic Depth) 以及強化學習二元探索動作生成時使用。
+- **語法**：`mx.random.bernoulli(p=0.5, shape=None, key=None)`
+- **參數說明**：
+  - `p`：成功輸出為 `True` (1) 的機率值（介於 0.0 至 1.0 之間，預設 0.5）。
+  - `shape`：輸出張量維度大小。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：型別為 `bool` 的二元隨機遮罩張量。
+
+```python
+import mlx.core as mx
+
+# 模擬 Dropout 率為 0.2 (保留機率 p = 0.8)
+keep_prob = 0.8
+mask = mx.random.bernoulli(p=keep_prob, shape=(8, 16))
+
+# 應用遮罩並依倒數比例縮放維持期望值
+x = mx.ones((8, 16))
+x_dropped = (x * mask) / keep_prob
+print(x_dropped.shape)  # 假設印出：(8, 16)
+```
+
+---
+
+##### mx.random.randint() 離散均勻整數取樣
+
+- **使用時機**：自資料集中隨機抽樣索引、影像處理中隨機裁切空間起始座標生成、隨機類別標籤生成時使用。
+- **語法**：`mx.random.randint(low, high, shape=None, dtype=mx.int32, key=None)`
+- **參數說明**：
+  - `low`：取樣整數下界（包含）。
+  - `high`：取樣整數上界（不包含）。
+  - `shape`：輸出張量形狀。
+  - `dtype`：可選整數型別（如 `mx.int32`、`mx.uint32`）。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：數值落在 $[low, high)$ 區間的離散整數隨機張量。
+
+```python
+import mlx.core as mx
+
+# 隨機抽取 5 個介於 0 到 999 之間的樣本索引
+sample_indices = mx.random.randint(0, 1000, shape=(5,))
+print(sample_indices)  # 假設印出：array([384, 12, 905, 417, 62], dtype=int32)
+```
+
+---
+
+##### mx.random.categorical() 類別分佈對數機率採樣
+
+- **使用時機**：大語言模型文本自回歸生成中的**核心取樣函式**（配合 Temperature 溫度係數對 Logits 進行多項式隨機採樣）、強化學習離散 Policy 動作選取時使用。
+- **語法**：`mx.random.categorical(logits, axis=-1, num_samples=None, key=None)`
+- **參數說明**：
+  - `logits`：未歸一化對數機率分數張量（內部會自動以 Softmax 換算機率進行無偏取樣）。
+  - `axis`：執行類別抽樣的特徵軸向（預設為最後一軸 `-1`）。
+  - `num_samples`：每個分佈獨立抽取的樣本個數。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：型別為 `uint32` 的抽樣類別索引張量。
+
+```python
+import mlx.core as mx
+
+# 1. 模型對 4 個詞彙預測的原始 Logits
+logits = mx.array([1.5, 3.8, 0.2, 5.1])
+
+# 2. 引入溫度係數調整多樣性
+temperature = 0.7
+scaled_logits = logits / temperature
+
+# 3. 依據對數機率進行隨機採樣
+token_id = mx.random.categorical(scaled_logits)
+print(token_id.item())  # 假設印出：3 (高機率選中分數最高的第 3 號 Token)
+```
+
+---
+
+##### mx.random.permutation() 隨機置換與陣列洗牌
+
+- **使用時機**：在機器學習訓練流程中，每個訓練週期 (Epoch) 開始前隨機打亂樣本順序以消除樣本相關性，或建立隨機投影矩陣時使用。
+- **語法**：`mx.random.permutation(x, axis=0, key=None)`
+- **參數說明**：
+  - `x`：整數 $N$（自動生成 $0$ 到 $N-1$ 的隨機排列），或輸入之多維張量。
+  - `axis`：沿著哪一個維度執行隨機置換（預設為 0）。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：重排後的整數排列向量或洗牌後的多維張量。
+
+```python
+import mlx.core as mx
+
+# 1. 產生 0 至 9 的隨機打亂索引
+indices = mx.random.permutation(10)
+print(indices)  # 假設印出：array([7, 2, 9, 0, 4, 1, 8, 3, 6, 5], dtype=uint32)
+
+# 2. 沿第 0 軸打亂特徵矩陣
+features = mx.array([[1, 2], [3, 4], [5, 6]])
+shuffled = mx.random.permutation(features, axis=0)
+mx.eval(shuffled)
+```
+
+---
+
+##### mx.random.gumbel() 耿貝爾分佈取樣
+
+- **使用時機**：實作 Gumbel-Max 採樣技巧或 Gumbel-Softmax 可微分重參數化 (Reparameterization Trick)。能將離散的 Argmax 取樣轉化為平滑連續且可進行梯度反向傳播的 Softmax 形式。
+- **語法**：`mx.random.gumbel(shape=None, dtype=mx.float32, key=None)`
+- **參數說明**：
+  - `shape`：輸出張量維度大小。
+  - `dtype`：可選浮點數資料型別（預設為 `mx.float32`）。
+  - `key`：可選無狀態 PRNG 金鑰。
+- **回傳值**：
+  - `mx.array`：符合標準耿貝爾分佈 $G \sim 	ext{Gumbel}(0, 1)$ 之隨機張量。
+
+```python
+import mlx.core as mx
+
+logits = mx.array([2.0, 1.0, 0.5])
+
+# 1. 抽取耿貝爾雜訊
+gumbel_noise = mx.random.gumbel(shape=logits.shape)
+
+# 2. Gumbel-Softmax 可微分鬆弛採樣
+tau = 0.5  # 溫度退火超參數
+soft_sample = mx.softmax((logits + gumbel_noise) / tau)
+print(soft_sample)  # 假設印出：array([0.884, 0.089, 0.027], dtype=float32)
 ```
 
 ---
@@ -1027,4 +1330,25 @@ c = a @ b  # 降速或引發 Metal 算子執行期異常！
 # [正確寫法]：採用硬體原生支援之 float32 或 bfloat16
 a = mx.array([1.0, 2.0], dtype=mx.float32)
 b = mx.array([3.0, 4.0], dtype=mx.bfloat16)
+```
+
+---
+
+## 6. 在無狀態隨機取樣中重複使用未分割的 PRNG Key
+
+- **錯誤症狀**：在資料增強、多步迭代或並行分支計算中，不同步驟產生的隨機數序列完全相同，導致多樣性消失或模型過擬合。
+- **背後原理**：MLX 純函數式 PRNG Key 遵循確定性數學映射。只要傳入相同的 Key 張量，隨機函式保證產生完全相同的二進位數值序列。
+- **記憶口訣**：金鑰用過即失效，分支平行先 split，一鍵一算保隨機。
+
+```python
+# [錯誤寫法]：迴圈中重複傳遞同一個 key
+key = mx.random.key(42)
+for epoch in range(5):
+    noise = mx.random.normal((3,), key=key)  # 每一輪產生的 noise 完全相同！
+
+# [正確寫法]：每輪迭代透過 split 衍生新金鑰
+key = mx.random.key(42)
+for epoch in range(5):
+    key, subkey = mx.random.split(key)
+    noise = mx.random.normal((3,), key=subkey)  # 每一輪獲得完全獨立的隨機序列
 ```
