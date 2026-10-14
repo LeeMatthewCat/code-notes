@@ -66,19 +66,19 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 
 本表系統化對比傳統 PyTorch (CUDA / MPS) 與 Apple MLX 的架構與語法差異：
 
-| 功能操作 | PyTorch (MPS / CUDA) 寫法 | MLX 現代推薦標準寫法 | 核心差異與硬體優勢 |
-| :--- | :--- | :--- | :--- |
-| **陣列張量建立** | `torch.tensor([1, 2], device="mps")` | `mx.array([1, 2])` | 原生配置於統一記憶體，無需顯式傳遞至裝置 |
-| **裝置切換與資料搬移** | `x.to("mps")` 或 `x.cpu()` | 零拷貝共享，動態指定 `mx.default_device()` | 消除 PCIe 記憶體複製開銷，CPU/GPU 共享記憶體池 |
-| **隨機數生成模式** | 僅支援全域隱式狀態 `torch.manual_seed(42)` | 原生雙軌支援：全域狀態 (`mx.random.seed`) 與 JAX 風格無狀態金鑰 (`mx.random.key` / `split`) | 消除多執行緒並行計算的隨機衝突，原生相容純函數式編譯與變換 |
-| **矩陣乘法運算** | `torch.matmul(A, B)` 或 `A @ B` | `mx.matmul(A, B)` 或 `A @ B` | 自動調用 Apple Silicon 內部 AMX 矩陣協處理器加速 |
-| **計算圖評估求值** | 即時求值 (Eager Evaluation) | 惰性求值 (Lazy)，顯式 `mx.eval(x)` | 支援動態融合 Metal 計算核，減少記憶體中繼暫存 |
-| **自動微分運算** | 隱式計算圖 `loss.backward()` | 函數式變換 `mx.grad(fn)` 或 `mx.value_and_grad(fn)` | 純函數式高階微分設計，無隱式狀態殘留 |
-| **即時編譯加速 (JIT)** | `torch.compile(model)` | `mx.compile(fn)` | 生成並融合最佳化 Metal 著色核心，大幅提升吞吐量 |
-| **注意力機制加速** | `F.scaled_dot_product_attention` | `mlx.core.fast.scaled_dot_product_attention` | Metal 原生硬體融合注意力核心，大幅降低顯存頻寬消耗 |
-| **旋轉位置編碼加速** | 手寫複數旋轉矩陣乘法 | `mlx.core.fast.rope` | 核心層硬體深度優化，極速計算 RoPE 嵌入 |
-| **模型權限與量化** | 第三方 bitsandbytes 或 GPTQ | `nn.QuantizedLinear` 原生 4-bit / 8-bit | Apple Silicon 硬體原生向量矩陣乘法加速量化 |
-| **大型語言模型推論** | Hugging Face Transformers (`device_map="auto"`) | `mlx_lm` 生態套件 (`mlx_lm.generate`) | 專為 Mac 記憶體頻寬最佳化，推論速度極快 |
+| 功能操作             | PyTorch (MPS / CUDA) 寫法                         | MLX 現代推薦標準寫法                                                             | 核心差異與硬體優勢                          |
+| :--------------- | :---------------------------------------------- | :----------------------------------------------------------------------- | :--------------------------------- |
+| **陣列張量建立**       | `torch.tensor([1, 2], device="mps")`            | `mx.array([1, 2])`                                                       | 原生配置於統一記憶體，無需顯式傳遞至裝置               |
+| **裝置切換與資料搬移**    | `x.to("mps")` 或 `x.cpu()`                       | 零拷貝共享，動態指定 `mx.default_device()`                                         | 消除 PCIe 記憶體複製開銷，CPU/GPU 共享記憶體池     |
+| **隨機數生成模式**      | 僅支援全域隱式狀態 `torch.manual_seed(42)`               | 原生雙軌支援：全域狀態 (`mx.random.seed`) 與 JAX 風格無狀態金鑰 (`mx.random.key` / `split`) | 消除多執行緒並行計算的隨機衝突，原生相容純函數式編譯與變換      |
+| **矩陣乘法運算**       | `torch.matmul(A, B)` 或 `A @ B`                  | `mx.matmul(A, B)` 或 `A @ B`                                              | 自動調用 Apple Silicon 內部 AMX 矩陣協處理器加速 |
+| **計算圖評估求值**      | 即時求值 (Eager Evaluation)                         | 惰性求值 (Lazy)，顯式 `mx.eval(x)`                                              | 支援動態融合 Metal 計算核，減少記憶體中繼暫存         |
+| **自動微分運算**       | 隱式計算圖 `loss.backward()`                         | 函數式變換 `mx.grad(fn)` 或 `mx.value_and_grad(fn)`                            | 純函數式高階微分設計，無隱式狀態殘留                 |
+| **即時編譯加速 (JIT)** | `torch.compile(model)`                          | `mx.compile(fn)`                                                         | 生成並融合最佳化 Metal 著色核心，大幅提升吞吐量        |
+| **注意力機制加速**      | `F.scaled_dot_product_attention`                | `mlx.core.fast.scaled_dot_product_attention`                             | Metal 原生硬體融合注意力核心，大幅降低顯存頻寬消耗       |
+| **旋轉位置編碼加速**     | 手寫複數旋轉矩陣乘法                                      | `mlx.core.fast.rope`                                                     | 核心層硬體深度優化，極速計算 RoPE 嵌入             |
+| **模型權限與量化**      | 第三方 bitsandbytes 或 GPTQ                         | `nn.QuantizedLinear` 原生 4-bit / 8-bit                                    | Apple Silicon 硬體原生向量矩陣乘法加速量化       |
+| **大型語言模型推論**     | Hugging Face Transformers (`device_map="auto"`) | `mlx_lm` 生態套件 (`mlx_lm.generate`)                                        | 專為 Mac 記憶體頻寬最佳化，推論速度極快             |
 
 ---
 
