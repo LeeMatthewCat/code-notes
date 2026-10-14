@@ -94,6 +94,7 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | **[[#mx.random.key() 建立純函數式 PRNG 密鑰\|mx.random.key()]]** | **建立無狀態純函數式亂數生成密鑰** | 純函數式隨機計算、多執行緒並行隨機採樣 |
 | **[[#mx.random.split() 分割無狀態 PRNG 子金鑰\|mx.random.split()]]** | **自現有金鑰衍生分割產生多個獨立子金鑰** | 分支隨機計算、避免平行迭代隨機序列相關性 |
 | **[[#mx.random.normal() 常態分佈高斯取樣\|mx.random.normal()]]** | **生成符合常態高斯分佈之多維隨機張量** | 權重矩陣初始化、擴散模型前向加噪、高斯雜訊擾動 |
+| **[[#mx.random.multivariate_normal() 多元常態高斯分佈取樣\|mx.random.multivariate_normal()]]** | **依指定均值向量與協方差矩陣抽取多維相關常態分佈樣本** | VAE 潛在空間採樣、高斯混合模型 (GMM)、貝氏最佳化 |
 | **[[#mx.random.truncated_normal() 截斷常態分佈取樣\|mx.random.truncated_normal()]]** | **生成去除極端離群值之截斷常態分佈張量** | Transformer / ViT 權重初始化、早期訓練穩定度維護 |
 | **[[#mx.random.uniform() 均勻分佈隨機取樣\|mx.random.uniform()]]** | **在指定連續區間內生成均勻分佈隨機數** | 權重均勻初始化 (Xavier)、超參數隨機搜尋 |
 | **[[#mx.random.bernoulli() 伯努利二項分佈遮罩\|mx.random.bernoulli()]]** | **依指定機率生成布林二元隨機遮罩張量** | 自訂實現 Dropout 層、隨機深度 (Stochastic Depth) |
@@ -101,6 +102,7 @@ MLX 預設將運算排程於 GPU 執行。若有特殊需求，亦可靈活指�
 | **[[#mx.random.categorical() 類別分佈對數機率採樣\|mx.random.categorical()]]** | **依據未歸一化對數機率分佈進行隨機離散抽樣** | LLM 文本生成 Temperature 採樣、RL 動作選取 |
 | **[[#mx.random.permutation() 隨機置換與陣列洗牌\|mx.random.permutation()]]** | **對整數序列或多維陣列沿指定軸隨機洗牌** | 訓練週期 (Epoch) 資料集隨機洗牌、樣本亂序打亂 |
 | **[[#mx.random.gumbel() 耿貝爾分佈取樣\|mx.random.gumbel()]]** | **生成標準耿貝爾分佈隨機變數張量** | Gumbel-Max 技巧、Gumbel-Softmax 可微分重參數化 |
+| **[[#mx.random.laplace() 拉普拉斯雙指數分佈取樣\|mx.random.laplace()]]** | **生成尖峰重尾之拉普拉斯分佈隨機張量** | 差分隱私 (DP) 雜訊機制、L1 稀疏先驗建模、魯棒回歸 |
 | **[[#mx.matmul() 與 @ 批次矩陣相乘運算\|mx.matmul() / @]]**                                                | **執行二維或高維張量廣播矩陣乘法運算**                       | 全連接神經層前向計算、多頭注意力 QK 乘積             |
 | **[[#mx.linalg.norm() 矩陣與向量範數計算\|mx.linalg.norm()]]**                                             | **計算張量之 L1、L2 範數或 Frobenius 矩陣範數**          | 權重正則化懲罰、梯度裁剪 (Gradient Clipping)   |
 | **[[#mx.linalg.inv() 方陣求逆與線性方程求解\|mx.linalg.inv()]]**                                             | **求解非奇異方陣之逆矩陣**                             | 線性回歸封閉式解、協方差矩陣求逆、卡爾曼濾波             |
@@ -340,6 +342,40 @@ print(noise.dtype)  # 假設印出：float32
 
 ---
 
+##### mx.random.multivariate_normal() 多元常態高斯分佈取樣
+
+- **使用時機**：自多元高斯分佈中採樣多維隨機向量。在變分自編碼器 (VAE) 潛在空間潛變數取樣、高斯混合模型 (GMM)、貝氏神經網絡權重採樣，以及模擬多維具相關性特徵時使用。
+- **語法**：`mx.random.multivariate_normal(mean, cov, shape=None, dtype=mx.float32, key=None)`
+- **參數說明**：
+  - `mean`：均值向量張量，形狀為 `(..., D)`。
+  - `cov`：對稱半正定協方差矩陣張量，形狀為 `(..., D, D)`。
+  - `shape`：可選輸出前綴批次維度元組。輸出總體形狀為 `(*shape, *mean.shape[:-1], D)`。
+  - `dtype`：可選浮點數資料型別（預設為 `mx.float32`）。
+  - `key`：可選無狀態 PRNG 密鑰張量。
+- **回傳值**：
+  - `mx.array`：符合多元常態分佈 $\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ 之隨機張量。
+
+```python
+import mlx.core as mx
+
+# 1. 定義 2 維均值向量與協方差矩陣 (兩特徵呈現正相關 0.8)
+mean = mx.array([0.0, 1.0])
+cov = mx.array([[1.0, 0.8], [0.8, 2.0]])
+
+# 2. 批次採樣 100 筆 2 維相關特徵樣本
+samples = mx.random.multivariate_normal(mean, cov, shape=(100,))
+mx.eval(samples)
+print(samples.shape)  # 假設印出：(100, 2)
+
+# 3. 模擬 VAE 潛在空間採樣: (Batch=4, Latent_dim=8)
+mu = mx.zeros((4, 8))
+sigma_cov = mx.broadcast_to(mx.eye(8), (4, 8, 8))
+z = mx.random.multivariate_normal(mu, sigma_cov)
+print(z.shape)  # 假設印出：(4, 8)
+```
+
+---
+
 ##### mx.random.truncated_normal() 截斷常態分佈取樣
 
 - **使用時機**：用於神經網路（特別是 Transformer、BERT 與 ViT）權重矩陣初始化。能剔除超過指定標準差閾值的極端離群值，避免早期梯度爆炸並維持訓練穩定度。
@@ -519,6 +555,39 @@ gumbel_noise = mx.random.gumbel(shape=logits.shape)
 tau = 0.5  # 溫度退火超參數
 soft_sample = mx.softmax((logits + gumbel_noise) / tau)
 print(soft_sample)  # 假設印出：array([0.884, 0.089, 0.027], dtype=float32)
+```
+
+---
+
+##### mx.random.laplace() 拉普拉斯雙指數分佈取樣
+
+- **使用時機**：生成拉普拉斯（雙指數）分佈隨機數。在機器學習中廣泛應用於差分隱私 (Differential Privacy, DP-SGD) 的拉普拉斯機制梯度加噪、貝氏 Lasso（L1 稀疏正則化的機率對偶先驗），以及對極端離群值具備高抗擾能力的重尾分佈建模。
+- **語法**：`mx.random.laplace(shape=None, dtype=mx.float32, loc=0.0, scale=1.0, key=None)`
+- **參數說明**：
+  - `shape`：輸出張量維度大小序列（如 `(32, 64)`）。
+  - `dtype`：可選浮點數資料型別（預設為 `mx.float32`）。
+  - `loc`：分佈之位置中心參數 $\mu$（預設為 0.0）。
+  - `scale`：分佈之尺度多樣性參數 $b > 0$（預設為 1.0）。
+  - `key`：可選無狀態 PRNG 密鑰張量。
+- **回傳值**：
+  - `mx.array`：符合拉普拉斯分佈 $\text{Laplace}(\mu, b)$ 之隨機張量。
+
+```python
+import mlx.core as mx
+
+# 1. 抽取標準拉普拉斯隨機雜訊
+noise = mx.random.laplace(shape=(4, 4), loc=0.0, scale=1.0)
+print(noise.shape)  # 假設印出：(4, 4)
+
+# 2. 機器學習差分隱私 (DP-SGD) 梯度加噪實作
+grad = mx.ones((10, 5))
+sensitivity = 0.1  # 梯度 L1 敏感度
+epsilon = 1.0      # 隱私預算參數
+dp_scale = sensitivity / epsilon
+
+# 注入拉普拉斯噪聲保護訓練樣本隱私
+dp_grad = grad + mx.random.laplace(shape=grad.shape, scale=dp_scale)
+mx.eval(dp_grad)
 ```
 
 ---
@@ -1351,4 +1420,25 @@ key = mx.random.key(42)
 for epoch in range(5):
     key, subkey = mx.random.split(key)
     noise = mx.random.normal((3,), key=subkey)  # 每一輪獲得完全獨立的隨機序列
+```
+
+---
+
+## 7. 誤認 np.random.seed 或 torch.manual_seed 能控制 MLX 隨機性
+
+- **錯誤症狀**：在腳本開頭設定了 `np.random.seed(42)` 或 `torch.manual_seed(42)`，但 MLX 模型的權重初始化與隨機採樣結果依舊不可預期且每次變動。
+- **背後原理**：MLX 擁有完全獨立於 NumPy 與 PyTorch 的原生 Threefry 計數隨機數生成引擎。外部框架的全域狀態完全無法滲透至 MLX 內部狀態。
+- **記憶口訣**：各家隨機各家管，MLX 必設 mx.random.seed，純函數務必傳 Key。
+
+```python
+# [錯誤寫法]：僅依賴 NumPy 設定隨機種子
+import numpy as np
+import mlx.core as mx
+
+np.random.seed(42)
+w = mx.random.normal((4, 4))  # 依然不可重現！每次執行結果皆不同
+
+# [正確寫法]：明確呼叫 MLX 專屬 seed 函式
+mx.random.seed(42)
+w = mx.random.normal((4, 4))  # 完全保證跨次執行精確一致
 ```
