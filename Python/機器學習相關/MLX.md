@@ -1276,6 +1276,7 @@ print(out.shape)  # 假設印出：(1, 1024)
 ##### nn.Embedding 詞嵌入向量查表層
 
 - **使用時機**：自然語言處理 (NLP) 或大語言模型中，將離散 Token ID 映射為連續密集實數特徵向量。
+> 保留**輸入張量原本的所有維度**，並在最後面接上一個特徵維度（ `dims` 參數）。
 - **語法**：`nn.Embedding(num_embeddings, dims)`
 - **參數說明**：
   - `num_embeddings`：詞彙庫大小 (Vocabulary Size)。
