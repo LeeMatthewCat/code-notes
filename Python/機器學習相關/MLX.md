@@ -1044,6 +1044,7 @@ print(q_roped.shape)  # 假設印出：(1, 4, 16, 64)
   - `x`：輸入張量，形狀為 `(..., D)`。
   - `weight`：形狀為 `(D,)` 的可學習縮放係數向量。
   - `eps`：極小常數數值，防止分母除以零。
+- **精度轉換特性（就算是 32 也會轉到 16 再轉回）**：在底層 Metal 著色核心中，即使張量以 32-bit (FP32) 傳入，硬體管線為了記憶體頻寬與吞吐最佳化，也會先轉到 16-bit 進行高效傳輸與縮放；但平方和統計累積 $\sum x_i^2$ 則自動提升至 32-bit (float32) 進行高精度累積以防溢位，最後再轉回相應精度。
 - **回傳值**：
   - `mx.array`：經過均方根正規化後之張量。
 
@@ -1485,11 +1486,15 @@ print(f"量化權重形狀: {qlinear.weight.shape}, 刻度形狀: {qlinear.scale
 - **參數說明**：
   - `num_embeddings`：詞彙庫大小 (Vocabulary Size)。
   - `dims`：每個詞嵌入向量之特徵維度 (Embedding Dimension)。
+- **計算位元精度說明 (預設算出來是 FP32)**：
+  - MLX 的 `nn.Embedding` 內部可學習權重矩陣 `self.weight` 預設初始化為 **FP32 (`mx.float32`)** 精度。
+  - 因此在前向傳播查表 `embedding(tokens)` 時，無論輸入的整數 Token ID 張量是 `int32` 還是其他整數型別，**算出來的輸出特徵向量位元精度一律為 FP32 (`mx.float32`)**。
+  - 若模型整體採用半精度（如 `mx.float16` 或 `mx.bfloat16`）進行推論或訓練，務必顯式對嵌入層呼叫 `embedding.set_dtype(mx.float16)` 或在模型頂層呼叫 `model.set_dtype(...)`，否則嵌入特徵張量會持續以 32-bit 佔用雙倍的快取與記憶體頻寬。
 - **物件方法與成員 (Methods & Attributes)**：
-  - `__call__(x)`：前向傳播。接收任意形狀的整數索引張量，回傳查表特徵向量陣列 `self.weight[x]`。
+  - `__call__(x)`：前向傳播。接收任意形狀的整數索引張量，回傳查表特徵向量陣列 `self.weight[x]`（型別預設為 `float32`）。
   - `as_linear(x)`：將詞嵌入矩陣當作線性層調用，執行 `x @ self.weight.T` 矩陣乘法。在自回歸 Transformer 語言模型中，非常適合用於**權重綁定 (Weight Tying / Tied Embeddings)**，以相同的詞嵌入矩陣直接作為 LM Head 的分類預測投影層，大幅節省顯存。
   - `to_quantized(group_size=64, bits=4, mode="affine")`：回傳近似此嵌入層的高效量化版本 `QuantizedEmbedding`，將龐大的詞彙表嵌入矩陣壓縮為 4-bit 或 8-bit。
-  - `weight`（屬性）：形狀為 `(num_embeddings, dims)` 的可學習詞嵌入權重矩陣。
+  - `weight`（屬性）：形狀為 `(num_embeddings, dims)` 的可學習詞嵌入權重矩陣（預設為 `float32`）。
   - 關鍵繼承方法：`set_dtype(mx.bfloat16)`、`parameters()`、`freeze()`。
 - **回傳值**：
   - 詞嵌入層神經模組實例。
@@ -1506,13 +1511,16 @@ tokens = mx.array([[101, 2054, 2003, 102], [101, 1045, 2066, 102]])
 vectors = embedding(tokens)
 print(f"嵌入特徵向量維度: {vectors.shape}")  # 印出：(2, 4, 512)
 
-# 2. 調用 as_linear() 執行權重綁定反向投影 (LM Head)
+# 2. 驗證查表算出來的位元精度 (預設為 float32 / FP32)
+print(f"查表輸出張量精度: {vectors.dtype}")  # 印出：float32
+
+# 3. 調用 as_linear() 執行權重綁定反向投影 (LM Head)
 # 將隱藏層表示投影回詞彙表維度的未歸一化對數機率 (Logits)
 hidden_states = mx.random.normal((2, 4, 512))
 logits = embedding.as_linear(hidden_states)
 print(f"LM Head 輸出 Logits 維度: {logits.shape}")  # 印出：(2, 4, 32000)
 
-# 3. 轉換為 4-bit 量化詞嵌入層
+# 4. 轉換為 4-bit 量化詞嵌入層
 q_embedding = embedding.to_quantized(group_size=64, bits=4)
 print(f"量化詞嵌入層型別: {type(q_embedding).__name__}")  # 印出：QuantizedEmbedding
 ```
@@ -1650,8 +1658,12 @@ ln.freeze(keys="bias")
   - `dims`：需要進行均方根歸一化的特徵維度大小（通常對應模型的隱藏層維度 `hidden_size`）。
   - `eps`：極小常數浮點數，防止除以零（必須為大於 0 的正數，預設為 `1e-5`，現代大模型常用 `1e-5` 或 `1e-6`）。
 - **物件方法與成員 (Methods & Attributes)**：
-  - **前向計算與硬體調度**：
-    - `__call__(x)`：前向傳播計算。接收最後一維為 `dims` 的任意多維張量（如 `(Batch, Seq_Len, Hidden_Dim)`）。內部自動無縫調用 Apple Metal 硬體融合算子 `mx.fast.rms_norm(x, self["weight"], self.eps)`，均方累加於 GPU 上自動以 32-bit (float32) 精度進行累積以防止溢位，最後再轉回與輸入相同的浮點精度輸出。
+  - **前向計算與硬體調度（就算是 32 也會轉到 16 再轉回）**：
+    - `__call__(x)`：前向傳播計算。接收最後一維為 `dims` 的任意多維張量（如 `(Batch, Seq_Len, Hidden_Dim)`）。
+    - **Metal 底層精度轉換機制（就算輸入為 32 也會轉到 16 再轉回）**：
+      - 在 Apple Silicon 的 Metal 硬體計算管線中，為了達到最高記憶體頻寬吞吐量，**就算是傳入 32-bit (FP32) 輸入張量，Metal 底層核心在管線傳輸與標準化除法時也會先轉到 16-bit (FP16/BF16) 進行高效吞吐與縮放**。
+      - 但在計算均方統計量 $\frac{1}{d} \sum_{i=1}^d x_i^2$ 時，為了防止 16-bit 浮點數發生嚴重的數值溢位（Overflow），Metal 核心會在 GPU 內部**自動提升至 32-bit (float32) 高精度進行累積與開根號**。
+      - 完成均方根計算後，再轉回 16-bit 進行後續層的高速傳遞（若原始要求輸出 32-bit 則再轉回 32-bit）。這種「32 $\to$ 16 $\to$ 內部 32 累加 $\to$ 16/32 轉回」的混合精度流動機制，兼顧了硬體極致吞吐與數值防爆穩定性。
   - **內部參數與超參數屬性**：
     - `weight`（屬性）：形狀為 `(dims,)` 的可學習仿射縮放係數張量 $\gamma$。初始化時預設為全 1 向量（`mx.ones((dims,))`）。
     - `eps`（屬性）：初始化時設定的數值穩定常數。
