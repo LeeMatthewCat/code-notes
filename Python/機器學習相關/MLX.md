@@ -160,6 +160,7 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 
 | 類別 / 函式名稱 | 主要用途 | 典型適用情境 |
 | :--- | :--- | :--- |
+| **[[#MLX 數值資料型別 (Data Types / dtypes) 全景指南\|mx.bfloat16 / mx.float16 / mx.float32]]** | **張量數值位元精度與型別定義 (BF16, FP16, FP32 等)** | 模型微調推論精度配置、省顯存半精度計算、數值溢位防範 |
 | **[[#mx.array() 建立 MLX 多維陣列張量\|mx.array()]]** | **建立支援統一記憶體的多維陣列張量** | 資料前處理、張量建立、數值運算起手式 |
 | **[[#mx.eval() 強制觸發惰性運算求值\|mx.eval()]]** | **顯式強制計算惰性求值圖譜並釋放中繼節點** | 批次訓練迴圈、釋放圖暫存、取得具體數值 |
 | **[[#mx.default_device() 查詢或設定預設運算裝置\|mx.default_device()]]** | **查詢或切換預設執行硬體 (GPU / CPU)** | 效能調優、強制特定算子於 CPU 上執行 |
@@ -224,6 +225,85 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 ---
 
 # 核心基礎運算與張量操作 (mlx.core)
+
+## MLX 數值資料型別 (Data Types / dtypes) 全景指南
+
+在 Apple MLX 中，所有張量（`mx.array`）都具備明確的資料型別（`dtype`），用於決定其在 Apple Silicon 統一記憶體中佔用的位元組大小、數值表示範圍與底層硬體運算單元（如 AMX 矩陣乘法加速器或 Metal 浮點向量單元）。
+
+### 1. MLX 支援的完整資料型別矩陣
+
+| 分類 | 型別常數 | 位元組大小 (Bytes) | 說明與典型應用場景 |
+| :--- | :--- | :--- | :--- |
+| **大模型半精度浮點** | `mx.bfloat16` | 2 bytes (16-bit) | **現代 LLM 標準型別**（Llama 3、Mistral、DeepSeek）。指數位與 FP32 相同，徹底杜絕溢位，比 FP32 省 50% 顯存與頻寬。 |
+| **傳統半精度浮點** | `mx.float16` | 2 bytes (16-bit) | 傳統電腦視覺與音訊模型常用。精度高於 BF16，但最大值僅 65,504，訓練中較易溢位。 |
+| **標準單精度浮點** | `mx.float32` | 4 bytes (32-bit) | **MLX 預設浮點型別**。科學計算、損失累積、評估指標與數值敏感層（如 Softmax / RMSNorm 累加）的基準精度。 |
+| **雙精度浮點** | `mx.float64` | 8 bytes (64-bit) | 高精度物理模擬或統計求逆。**注意：Apple Silicon GPU 不支援硬體 FP64 向量單元，僅限 CPU 運算。** |
+| **有符號整數** | `mx.int8` / `mx.int16` / `mx.int32` / `mx.int64` | 1 / 2 / 4 / 8 bytes | `int32` 為 Token ID 查表與預設整數；`int8` 常用於對稱量化權重；`int64` 用於超大索引。 |
+| **無符號整數** | `mx.uint8` / `mx.uint16` / `mx.uint32` / `mx.uint64` | 1 / 2 / 4 / 8 bytes | `uint8` 常用於影像像素 (0~255) 與量化縮放；`uint32` 為 MLX 隨機金鑰 (`mx.random.key`) 的底層規格。 |
+| **布林型別** | `mx.bool_` | 1 byte (8-bit) | 注意力因果遮罩 (Mask)、條件選取 (`mx.where`) 與伯努利丟棄遮罩。 |
+| **複數型別** | `mx.complex64` | 8 bytes (2x FP32) | 傅立葉變換 (FFT)、信號處理與頻域特徵分析。 |
+
+---
+
+### 2. 深度剖析：為什麼現代 LLM 全面採用 `mx.bfloat16`？
+
+一般程式語言中的「普通浮點數」通常為 **FP32 (單精度 32-bit)** 或 **FP64 (雙精度 64-bit)**。而 `mx.bfloat16` (Brain Floating Point 16) 是專門為深度學習打造的 16 位元浮點數。
+
+#### 底層位元分配與數值範圍對照表
+
+| 浮點型別 | 符號位 (Sign) | 指數位 (Exponent) | 尾數位 (Fraction) | 動態範圍 (Max / Min) | 機器精度 $\epsilon$ (Epsilon) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **FP32** (`mx.float32`) | 1 bit | **8 bits** | 23 bits | $\approx \pm 3.4 \times 10^{38}$ | $\approx 1.19 \times 10^{-7}$ |
+| **FP16** (`mx.float16`) | 1 bit | 5 bits | 10 bits | $\approx \pm 65,504$ (極易溢位) | $\approx 9.77 \times 10^{-4}$ |
+| **BF16** (`mx.bfloat16`) | 1 bit | **8 bits** | 7 bits | $\approx \pm 3.39 \times 10^{38}$ (與 FP32 一致) | $\approx 7.81 \times 10^{-3}$ |
+
+#### `bfloat16` 的三大不可替代優勢
+
+1. **動態範圍完全等同於 FP32**：  
+   `bfloat16` 的指數位達到 8 bits，其數值上限高達 $3.39 \times 10^{38}$。傳統 FP16 超過 65,504 就會變成 `inf`，在反向傳播時經常發生梯度爆炸與 NaN；而 `bfloat16` 徹底消除了溢位風險，免除了繁瑣的動態損失縮放（Loss Scaling）。
+2. **與 FP32 轉換零電路開銷**：  
+   `bfloat16` 的高 16 位元與 FP32 的高 16 位元（1 符號 + 8 指數 + 7 高位尾數）完全重合。硬體將 FP32 轉為 `bfloat16` 時只需截斷低 16 位尾數，轉換速度極快且能效極高。
+3. **Apple Silicon 硬體原生加速**：  
+   M 系列晶片的神經網路引擎 (Neural Engine) 與 Metal GPU 具備完整的 BF16 原生向量乘加指令。在統一記憶體中，將權重由 FP32 轉為 `mx.bfloat16` 直接省下 **50% 記憶體空間與傳輸頻寬**，推論吞吐量大幅暴增。
+
+---
+
+### 3. 型別檢查、轉換與極限查詢常用操作
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 1. 建立指定型別的張量
+x_bf16 = mx.array([1.5, 2.5, 3.5], dtype=mx.bfloat16)
+print(f"張量型別: {x_bf16.dtype}")           # 印出：mlx.core.bfloat16
+print(f"單一元素位元組數: {x_bf16.itemsize}")  # 印出：2 bytes
+
+# 2. astype() 顯式型別轉換
+x_fp32 = x_bf16.astype(mx.float32)
+print(f"轉換後型別: {x_fp32.dtype}")         # 印出：mlx.core.float32
+print(f"單一元素位元組數: {x_fp32.itemsize}")  # 印出：4 bytes
+
+# 3. 查詢浮點數極限範圍 (mx.finfo) 與整數範圍 (mx.iinfo)
+bf16_info = mx.finfo(mx.bfloat16)
+print(f"bfloat16 最大值: {bf16_info.max:.4e}, 最小值: {bf16_info.min:.4e}")
+# 印出：bfloat16 最大值: 3.3895e+38, 最小值: -3.3895e+38
+
+fp16_info = mx.finfo(mx.float16)
+print(f"float16 最大值: {fp16_info.max}")  # 印出：65504.0 (容易溢位)
+
+int_info = mx.iinfo(mx.int32)
+print(f"int32 範圍: [{int_info.min}, {int_info.max}]")
+# 印出：int32 範圍: [-2147483648, 2147483647]
+
+# 4. 神經網路模型全域轉為 bfloat16
+model = nn.Linear(1024, 1024)
+print(f"預設權重型別: {model.weight.dtype}")  # 印出：float32
+model.set_dtype(mx.bfloat16)
+print(f"轉型後權重型別: {model.weight.dtype}")  # 印出：bfloat16
+```
+
+---
 
 ##### mx.array() 建立 MLX 多維陣列張量
 
