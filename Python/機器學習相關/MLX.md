@@ -75,6 +75,66 @@ MLX 的 `mx.compile()` 採用即時編譯（Just-In-Time Compilation）技術，
 
 ---
 
+## 張量不可變性 (Tensor Immutability) 與殘差連接 (Residual Connection)
+
+在 MLX 中，多維陣列張量（`mx.array`）被設計為**嚴格不可變 (Immutable)** 的純函數式資料結構。
+
+### 1. 為什麼張量設計為不可變？
+
+- **純函數式自動微分**：自動微分引擎（`mx.grad`、`mx.value_and_grad`）需要明確追蹤每個計算節點的輸入與輸出。若允許張量就地修改，反向傳播時難以保證中間激活值未被篡改。
+- **無副作用與安全引用**：在 Python 中進行賦值（如 `residual = x`）時，僅是增加物件參照（Reference）。因為張量不可變，你永遠不需要擔心後續模組或分支運算在背後悄悄修改底層記憶體陣列。
+- **零成本「複製一份」**：在不可變資料結構下，保留一份資料供後續使用（例如 `residual = x`）是完全**零開銷 (Zero-overhead)** 的，既不會觸發實體記憶體搬移或深拷貝 (Deep Copy)，又能獲得如同獨立副本的安全保證。
+
+### 2. 核心實戰場景：殘差連接 (Residual Connection)
+
+在現代深度學習架構（如 Transformer 的 Pre-LN 結構、ResNet 或 DiT 擴散模型）中，**殘差連接 (Residual Connection / Skip Connection)** 是不可或缺的核心組件：
+$$y = x + \mathrm{SubLayer}(\mathrm{Norm}(x))$$
+
+- **在 PyTorch 中的潛在陷阱**：若程式碼中不慎使用了就地修改運算（例如 `torch.relu_()`、`x += delta` 或切片就地賦值），先前保留下來作為殘差的張量可能在不知不覺中被覆蓋，導致反向傳播報錯（*RuntimeError: a view of a leaf Variable that requires grad is being used in an in-place operation*）。
+- **在 MLX 中的絕對安全與直覺**：直接將輸入參照賦值給殘差變數 `residual = x`。後續即使對 `x` 進行層歸一化、注意力機制或前饋網路變換，所有算子都會傳回全新的張量，原始的 `residual` 永遠維持原貌，最終直接相加 `x = residual + branch_output` 即可。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+class ResidualTransformerBlock(nn.Module):
+    def __init__(self, dims: int, num_heads: int):
+        super().__init__()
+        self.norm = nn.RMSNorm(dims)
+        self.attn = nn.MultiHeadAttention(dims, num_heads)
+        self.ffn = nn.Sequential(
+            nn.Linear(dims, dims * 4),
+            nn.GELU(),
+            nn.Linear(dims * 4, dims)
+        )
+
+    def __call__(self, x: mx.array, mask: mx.array = None) -> mx.array:
+        # 1. 殘差連接應用：直接賦值引用「複製一份」殘差
+        # 由於 MLX 張量不可變，此操作為零記憶體複製開銷，且保證後續運算絕不污染原始輸入
+        residual = x
+        
+        # 2. 主分支計算 (norm 與 attn 均產生新張量，residual 保持不變)
+        x = self.norm(x)
+        x = self.attn(queries=x, keys=x, values=x, mask=mask)
+        
+        # 3. 殘差相加融合
+        x = residual + x
+        
+        # 4. 第二段 FFN 殘差連接
+        residual = x
+        x = residual + self.ffn(self.norm(x))
+        return x
+
+# 驗證殘差張量不可變性
+x = mx.ones((2, 4, 64))
+block = ResidualTransformerBlock(dims=64, num_heads=4)
+out = block(x)
+mx.eval(out)
+print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
+```
+
+---
+
 # 跨框架設計與語法演進對照表
 
 本表系統化對比傳統 PyTorch (CUDA / MPS) 與 Apple MLX 的架構與語法差異：
@@ -2115,7 +2175,8 @@ loss, grads = loss_and_grad(model, x, y)
 
 - **錯誤症狀**：在微分變換中修改張量，拋出異常或導致反向傳播梯度錯誤。
 - **背後原理**：為支援純函數式變換與高階圖優化，MLX 張量具備函數式不可變 (Immutable) 特徵，不支援就地修改底層記憶體陣列。
-- **記憶口訣**：張量本質不可變，賦值重組建新圖，嚴禁就地切片改。
+- **正向優勢應用**：正因張量具備不可變特性，在神經網路撰寫**殘差連接 (Residual Connection)** 時，可以直接以 `residual = x` 引用保留輸入，完全不必擔心主分支的前向運算會就地修改或覆蓋原始資料，兼具零記憶體拷貝開銷與百分之百的副作用安全。
+- **記憶口訣**：張量本質不可變，賦值重組建新圖，殘差連接隨手存，嚴禁就地切片改。
 
 ```python
 # [錯誤寫法]：試圖對張量內部元素進行就地修改
