@@ -1191,6 +1191,68 @@ print(out.shape)  # 假設印出：(2, 128, 512)
 
 # 神經網路構建與訓練體系 (mlx.nn & mlx.optimizers)
 
+## 什麼是「神經模組實例 (Neural Module Instance)」？
+
+在 MLX 深度學習程式設計中，「神經模組實例」是指透過神經網路類別（如 `nn.Linear`、`nn.Embedding`、`nn.Dropout` 或自訂繼承 `nn.Module` 的架構）實際呼叫建立出來的**具體 Python 物件**。
+
+### 1. 類別 (Class) 與實例 (Instance) 的本質差異
+
+- **類別 (Class / 藍圖)**：定義網路層的前向計算邏輯、參數宣告規則與運算行為。例如 `nn.Linear` 或 `nn.Embedding` 本身只是 Python 類別，尚未分配具體的權重數值與輸入輸出通道維度。
+- **實例 (Instance / 具體物件)**：依據類別定義傳入具體尺寸（如 `input_dims=4, output_dims=2`）後，在系統記憶體中所生成的具體物件。例如 `layer = nn.Linear(4, 2)`，此時 `layer` 就是一個線性神經模組實例。
+
+### 2. MLX 模組實例的底層架構：字典特化子類別 (Dict Subclass)
+
+在 Apple MLX 的架構實作中，所有神經模組的基底類別 `nn.Module` 直接繼承自 Python 原生的 `dict` 字典。
+
+這項設計意味著：**一個神經模組實例在底層本質上就是一個支援屬性存取與計算圖綁定的「參數字典」**。當你在實例內部定義 `self.weight = mx.array(...)` 時，該張量不僅以屬性存在，也會自動被註冊為字典鍵值，使得優化器能以純字典方式遍歷與更新權重。
+
+### 3. 神經模組實例封裝的三大核心要素
+
+在記憶體中，一個具體的神經模組實例主要封裝了以下內容：
+
+1. **實體張量權重 (Tensor Weights)**：  
+   直接配置於 Apple Silicon 統一記憶體（Unified Memory）中的可學習多維陣列（`mx.array`），例如線性層的 `weight`、`bias`，或是歸一化層的縮放係數向量 `weight`。
+2. **結構與超參數配置 (Hyperparameters)**：  
+   實例建立時固定的計算規格與常數，例如 `nn.Dropout` 的丟棄機率 `p`，或是 `nn.RMSNorm` 的數值防爆量 `eps`。
+3. **動態執行狀態 (Runtime State)**：  
+   控制模組行為的布林標記，例如表示模型處於訓練或評估推論模式的 `training` 屬性（在 `Dropout` 中決定是否進行隨機置零，或在 `BatchNorm` 中決定是否累積統計量）。
+
+### 4. 模組實例的兩大關鍵運作特性
+
+- **可調用性 (Callable / Forward Pass)**：  
+  所有模組實例皆實作了 `__call__` 魔法方法。因此實例可以像原生 Python 函數一樣被直接調用（例如 `y = layer(x)`），內部會自動提取該實例持有的權重與超參數，並調用底層 Metal 著色核心執行硬體加速運算。
+- **樹狀巢狀結構 (Composite / Tree Pattern)**：  
+  父模組實例內部可以容納多個子模組實例（例如一個包含多個 `nn.Linear` 與 `nn.Dropout` 的 `nn.Sequential` 實例）。對父實例呼叫生命週期方法（如 `model.eval()`、`model.parameters()`、`model.freeze()` 或 `model.set_dtype()`）時，操作會自動沿著整個樹狀節點遞迴傳遞至底層所有子實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 1. 類別 vs 實例：呼叫類別建立具體實例
+layer_instance = nn.Linear(input_dims=4, output_dims=2)
+
+# 2. 檢驗底層本質：實例既是 nn.Module 也是 Python dict
+print(type(layer_instance))                    # <class 'mlx.nn.layers.linear.Linear'>
+print(isinstance(layer_instance, nn.Module))   # True
+print(isinstance(layer_instance, dict))        # True (底層為 dict 特化子類別)
+
+# 3. 實例內部持有的具體權重張量 (實體分配在 Apple Silicon 統一記憶體中)
+print(f"權重形狀: {layer_instance.weight.shape}")  # (2, 4)
+print(f"偏置形狀: {layer_instance.bias.shape}")    # (2,)
+
+# 4. 實例可直接作為函數執行前向計算 (呼叫內部 __call__)
+x = mx.array([[1.0, 2.0, 3.0, 4.0]])
+output = layer_instance(x)
+print(f"輸出張量維度: {output.shape}")  # (1, 2)
+
+# 5. 實例持有的動態生命週期狀態
+print(f"初始訓練模式: {layer_instance.training}")  # True
+layer_instance.eval()
+print(f"切換後訓練模式: {layer_instance.training}")  # False
+```
+
+---
+
 ##### nn.Module 神經網路模型抽象基底類別
 
 - **使用時機**：自訂深度學習架構、卷積網路或 Transformer 子模組時的繼承起點。MLX 中所有的神經網路層（如 `nn.Linear`、`nn.Embedding`、`nn.Dropout` 等）均繼承自 `nn.Module`（底層繼承自 Python `dict`）。
