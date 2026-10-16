@@ -1520,15 +1520,32 @@ ln.freeze(keys="bias")
 
 ##### nn.RMSNorm 均方根層歸一化層
 
-- **使用時機**：構建現代大型語言模型（Llama 3、Qwen、DeepSeek）的核心歸一化層。捨棄傳統均值計算與偏置參數，僅依據均方根統計縮放特徵，具備顯著更優的數值穩定度與硬體推論吞吐量。
+- **使用時機**：構建現代大型語言模型（Llama 3、Mistral、Qwen、DeepSeek）的核心正規化層。相較於傳統 `LayerNorm`，捨棄了均值計算 $\mathrm{E}[x]$ 與偏置參數 $\beta$，僅依據特徵的均方根 (Root Mean Square) 進行縮放：
+  $$y = \frac{x}{\sqrt{\frac{1}{d} \sum_{i=1}^d x_i^2 + \epsilon}} \odot \gamma$$
+  在 Apple Silicon 統一記憶體架構下，能減少約 30% ~ 50% 的中繼讀寫頻寬消耗，具備更極致的推論吞吐量與數值穩定性。
 - **語法**：`nn.RMSNorm(dims, eps=1e-5)`
 - **參數說明**：
-  - `dims`：歸一化維度大小。
-  - `eps`：極小常數，防止除以零。
+  - `dims`：需要進行均方根歸一化的特徵維度大小（通常對應模型的隱藏層維度 `hidden_size`）。
+  - `eps`：極小常數浮點數，防止除以零（必須為大於 0 的正數，預設為 `1e-5`，現代大模型常用 `1e-5` 或 `1e-6`）。
 - **物件方法與成員 (Methods & Attributes)**：
-  - `__call__(x)`：前向傳播。直接除以均方根並乘以縮放參數 $y = \frac{x}{\sqrt{\frac{1}{d} \sum x^2 + \epsilon}} \gamma$。底層呼叫 Metal 硬體優化核心。
-  - `weight`（屬性）：形狀為 `(dims,)` 的可學習縮放張量 $\gamma$。
-  - 關鍵繼承方法：`set_dtype(mx.bfloat16)`、`parameters()`、`update()`。
+  - **前向計算與硬體調度**：
+    - `__call__(x)`：前向傳播計算。接收最後一維為 `dims` 的任意多維張量（如 `(Batch, Seq_Len, Hidden_Dim)`）。內部自動無縫調用 Apple Metal 硬體融合算子 `mx.fast.rms_norm(x, self["weight"], self.eps)`，均方累加於 GPU 上自動以 32-bit (float32) 精度進行累積以防止溢位，最後再轉回與輸入相同的浮點精度輸出。
+  - **內部參數與超參數屬性**：
+    - `weight`（屬性）：形狀為 `(dims,)` 的可學習仿射縮放係數張量 $\gamma$。初始化時預設為全 1 向量（`mx.ones((dims,))`）。
+    - `eps`（屬性）：初始化時設定的數值穩定常數。
+  - **參數管理與微調控制 (繼承自 nn.Module)**：
+    - `parameters()`：取得包含 `{"weight": self.weight}` 的巢狀結構字典。
+    - `trainable_parameters()`：若模組未凍結，回傳包含 `weight` 的字典；若已凍結則回傳空字典。
+    - `freeze(keys=None)`：將此層的可學習參數凍結（不參與梯度計算）。在 LoRA 或部分固定微調中，通常將 RMSNorm 固定不更新。
+    - `unfreeze(keys=None)`：解除凍結，恢復參與自動微分求導。
+  - **精度轉換與序列化 (繼承自 nn.Module)**：
+    - `set_dtype(dtype)`：就地將縮放權重 `weight` 轉換為指定精度（如 `mx.float16` 或 `mx.bfloat16`），適配大模型推論環境。
+    - `save_weights(file)`：將此層權重獨立儲存至 `.safetensors` 或 `.npz` 格式檔案。
+    - `load_weights(file_or_weights, strict=True)`：自權重檔案或權重列表還原載入。
+    - `update(parameters, strict=True)`：以字典原位替換更新 `weight` 張量。
+    - `state`（屬性）：取得該模組即時狀態字典參照。
+  - **模式切換**：
+    - `train(mode=True)` / `eval()` / `training`：RMSNorm 屬於完全確定性無狀態計算（無 Dropout 遮罩，亦無 BatchNorm 的動態移動統計量），在訓練與評估模式下前向邏輯完全相同。
 - **回傳值**：
   - 均方根層歸一化神經模組實例。
 
@@ -1536,17 +1553,34 @@ ln.freeze(keys="bias")
 import mlx.core as mx
 import mlx.nn as nn
 
-# 初始化 RMSNorm 層
-norm_layer = nn.RMSNorm(dims=512, eps=1e-6)
+# 1. 初始化 RMSNorm 層 (隱藏維度 512, eps=1e-6)
+rms = nn.RMSNorm(dims=512, eps=1e-6)
 
-# 1. 前向計算均方根歸一化
-x = mx.random.normal((4, 32, 512))
-out = norm_layer(x)
+# 2. 檢視初始權重與超參數屬性
+print(f"縮放係數初始形狀: {rms.weight.shape}")  # 印出：(512,)
+print(f"初始值全為 1.0: {mx.all(rms.weight == 1.0).item()}")  # 印出：True
+print(f"數值穩定常數 eps: {rms.eps}")  # 印出：1e-06
+
+# 3. 前向計算 (多維張量自動沿最後維度歸一化)
+x = mx.random.normal((2, 16, 512))
+out = rms(x)
 mx.eval(out)
-print(f"RMSNorm 輸出維度: {out.shape}")  # 印出：(4, 32, 512)
+print(f"歸一化輸出維度: {out.shape}")  # 印出：(2, 16, 512)
 
-# 2. 檢視權重向量
-print(f"權重向量形狀: {norm_layer.weight.shape}")  # 印出：(512,)
+# 4. LoRA 微調場景：凍結 RMSNorm 權重
+rms.freeze()
+print(f"凍結後可訓練參數數量: {len(rms.trainable_parameters())}")  # 印出：0
+rms.unfreeze()
+
+# 5. 半精度模型推論轉換 (bfloat16)
+rms.set_dtype(mx.bfloat16)
+print(f"權重精度轉換後: {rms.weight.dtype}")  # 印出：bfloat16
+
+# 6. 權重獨立序列化儲存與載入
+rms.save_weights("rms_layer.safetensors")
+new_rms = nn.RMSNorm(dims=512)
+new_rms.load_weights("rms_layer.safetensors")
+print(f"載入後權重精度一致: {new_rms.weight.dtype == mx.bfloat16}")  # 印出：True
 ```
 
 ---
