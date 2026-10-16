@@ -1260,7 +1260,7 @@ print(f"切換後訓練模式: {layer_instance.training}")  # False
 - **物件核心方法與成員 (Methods & Attributes)**：
   - **前向計算與生命週期**：
     - `__init__()`：宣告內部神經網路層、子模組與初始張量參數。
-    - `__call__(*args, **kwargs)`：定義前向傳播 (Forward Pass) 計算邏輯，直接以 `model(x)` 調用。
+    - `__call__(*args, **kwargs)`：定義前向傳播 (Forward Pass) 計算邏輯，直接以 `model(x)` （用**物件**）調用。
     - `train(mode=True)`：切換訓練模式（遞迴作用於所有子模組，啟用 `Dropout` 隨機遮罩與動態統計），回傳 `self`（支援鏈式呼叫）。
     - `eval()`：切換評估推論模式（等價於 `train(mode=False)`），關閉隨機丟棄行為，回傳 `self`。
     - `training`（屬性）：布林值，查詢模組當前是否處於訓練模式。
