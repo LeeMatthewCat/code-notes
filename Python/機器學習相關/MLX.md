@@ -142,6 +142,7 @@ MLX 的 `mx.compile()` 採用即時編譯（Just-In-Time Compilation）技術，
 | **[[#nn.Linear 線性全連接神經層\|nn.Linear]]** | **執行仿射線性變換 (y = xW^T + b)** | 特徵降維、投影層、多層感知機 (MLP) 構建 |
 | **[[#nn.QuantizedLinear 4-bit 與 8-bit 硬體量化線性層\|nn.QuantizedLinear]]** | **在 Metal 原生執行仿射低位元權重矩陣乘法** | 本地大語言模型高能效推論、顯存極致壓縮 |
 | **[[#nn.Embedding 詞嵌入向量查表層\|nn.Embedding]]** | **將離散 Token ID 映射為連續密集實數向量表示** | NLP 模型輸入表示、Token 嵌入層、位置編碼表 |
+| **[[#nn.QuantizedEmbedding 硬體量化詞嵌入查表層\|nn.QuantizedEmbedding]]** | **4-bit / 8-bit 量化詞嵌入矩陣查表與線性投影** | 大語言模型超大詞彙表顯存極致壓縮 |
 | **[[#nn.Dropout 隨機神經元丟棄正則化層\|nn.Dropout]]** | **在訓練期依指定機率隨機將激活值置零並自動按比例放大** | 抑制神經網路過擬合、增強模型特徵泛化能力 |
 | **[[#nn.LayerNorm 標準層歸一化神經層\|nn.LayerNorm]]** | **沿特徵維度計算均值與方差並套用可學習仿射參數歸一化** | 經典 Transformer、BERT 與 ViT 的特徵穩定歸一化 |
 | **[[#nn.RMSNorm 均方根層歸一化層\|nn.RMSNorm]]** | **現代大語言模型必備之無偏置均方根正規化模組** | 構建 Llama 3、Mistral 等架構之 Pre-Norm 層 |
@@ -1192,13 +1193,34 @@ print(out.shape)  # 假設印出：(2, 128, 512)
 
 ##### nn.Module 神經網路模型抽象基底類別
 
-- **使用時機**：自訂深度學習架構、卷積網路或 Transformer 子模組時的繼承起點。
+- **使用時機**：自訂深度學習架構、卷積網路或 Transformer 子模組時的繼承起點。MLX 中所有的神經網路層（如 `nn.Linear`、`nn.Embedding`、`nn.Dropout` 等）均繼承自 `nn.Module`（底層繼承自 Python `dict`）。
 - **語法**：`class MyModel(nn.Module): ...`
-- **核心方法**：
-  - `__init__()`：宣告內部神經網路層與參數。
-  - `__call__()`：定義前向傳播 (Forward Pass) 計算邏輯。
-  - `parameters()`：取得當前模組所有可學習權重的巢狀字典。
-  - `train(mode=True)`：切換訓練模式或評估模式（影響 Dropout 等層）。
+- **物件核心方法與成員 (Methods & Attributes)**：
+  - **前向計算與生命週期**：
+    - `__init__()`：宣告內部神經網路層、子模組與初始張量參數。
+    - `__call__(*args, **kwargs)`：定義前向傳播 (Forward Pass) 計算邏輯，直接以 `model(x)` 調用。
+    - `train(mode=True)`：切換訓練模式（遞迴作用於所有子模組，啟用 `Dropout` 隨機遮罩與動態統計），回傳 `self`（支援鏈式呼叫）。
+    - `eval()`：切換評估推論模式（等價於 `train(mode=False)`），關閉隨機丟棄行為，回傳 `self`。
+    - `training`（屬性）：布林值，查詢模組當前是否處於訓練模式。
+  - **參數與狀態管理**：
+    - `parameters()`：遞迴回傳當前模組所有可學習權重張量（`mx.array`）的巢狀結構字典。
+    - `trainable_parameters()`：遞迴回傳僅包含未凍結（可更新）權重的巢狀字典。
+    - `freeze(recurse=True, keys=None, strict=False)`：凍結模組權重，使其不參與自動微分梯度計算（支援以 `keys` 指定特定名稱如 `"bias"`）。
+    - `unfreeze(recurse=True, keys=None, strict=False)`：解凍模組權重，恢復梯度計算。
+    - `state`（屬性）：模組狀態字典的即時參照（reference），對其內容進行修改會直接反映在模組自身。
+    - `update(parameters, strict=True)`：以給定參數結構字典原位替換更新模組參數（供優化器步階更新或追蹤器設定）。
+    - `apply(map_fn, filter_fn=None)`：對所有符合條件的權重張量套用自訂映射轉換函式並立即更新（例如全域權重裁剪）。
+    - `set_dtype(dtype, predicate=None)`：將模組參數（預設針對所有浮點型張量）轉換為指定精度型別（如 `mx.float16`、`mx.bfloat16`）。
+  - **模組架構巡訪與操作**：
+    - `modules()`：回傳此模組及其內部所有巢狀子模組的扁平清單（`list[nn.Module]`）。
+    - `named_modules()`：回傳子模組點記法名稱路徑與實例的元組清單（`list[tuple[str, nn.Module]]`，如 `("encoder.fc", Linear)`）。
+    - `children()`：回傳此模組直接包含的一級子模組字典（鍵名為屬性名，值為子模組物件）。
+    - `leaf_modules()`：回傳不包含其他子模組的最底層葉節點模組字典。
+    - `update_modules(modules, strict=True)`：以字典方式動態替換子模組（熱插拔更換層或掛載 LoRA 適配器）。
+    - `apply_to_modules(apply_fn)`：對自身及所有子模組遞迴執行自訂操作函式 `apply_fn(path, module)`。
+  - **權重持久化與序列化**：
+    - `save_weights(file)`：將模組所有權重保存至本機檔案（支援 `.safetensors` 與 `.npz`）。
+    - `load_weights(file_or_weights, strict=True)`：自 `.safetensors`、`.npz` 檔案或 `(name, array)` 列表還原載入權重。
 - **回傳值**：
   - 模型實例物件。
 
@@ -1206,31 +1228,61 @@ print(out.shape)  # 假設印出：(2, 128, 512)
 import mlx.core as mx
 import mlx.nn as nn
 
-class MLP(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int):
+class CustomTransformerBlock(nn.Module):
+    def __init__(self, dims: int, num_heads: int):
         super().__init__()
-        self.fc1 = nn.Linear(in_dim, 32)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(32, out_dim)
+        self.attn = nn.MultiHeadAttention(dims, num_heads)
+        self.ln1 = nn.LayerNorm(dims)
+        self.ffn = nn.Sequential(
+            nn.Linear(dims, dims * 4),
+            nn.GELU(),
+            nn.Linear(dims * 4, dims)
+        )
+        self.ln2 = nn.LayerNorm(dims)
+        self.drop = nn.Dropout(0.1)
 
-    def __call__(self, x: mx.array) -> mx.array:
-        return self.fc2(self.relu(self.fc1(x)))
+    def __call__(self, x: mx.array, mask: mx.array = None) -> mx.array:
+        x = x + self.drop(self.attn(self.ln1(x), self.ln1(x), self.ln1(x), mask))
+        x = x + self.drop(self.ffn(self.ln2(x)))
+        return x
 
-model = MLP(10, 2)
-out = model(mx.zeros((1, 10)))
-print(out.shape)  # 假設印出：(1, 2)
+block = CustomTransformerBlock(dims=64, num_heads=4)
+
+# 1. 訓練模式與評估模式切換
+block.eval()
+print(f"是否處於訓練模式: {block.training}")  # 印出：False
+block.train()
+
+# 2. 檢視子模組與葉節點模組
+print("子模組清單:", [name for name, _ in block.named_modules()])
+# 印出：[, attn, attn.key_proj, attn.out_proj, attn.query_proj, attn.value_proj, drop, ffn, ffn.layers.0, ffn.layers.1, ffn.layers.2, ln1, ln2]
+
+# 3. 凍結注意力投影權重 (僅訓練 FFN 與 LayerNorm)
+block.attn.freeze()
+trainable = block.trainable_parameters()
+print("注意力權重是否在訓練列表中:", "attn" in trainable)  # 印出：False
+
+# 4. 全域精度轉換為 float16
+block.set_dtype(mx.float16)
+print(f"FFN 第一層權重精度: {block.ffn.layers[0].weight.dtype}")  # 印出：float16
 ```
 
 ---
 
 ##### nn.Linear 線性全連接神經層
 
-- **使用時機**：執行標準的特徵維度投影與線性轉換運算。
+- **使用時機**：執行標準的特徵維度投影與仿射線性轉換運算 $y = x W^\top + b$。
 - **語法**：`nn.Linear(input_dims, output_dims, bias=True)`
 - **參數說明**：
   - `input_dims`：輸入特徵維度大小。
   - `output_dims`：輸出特徵維度大小。
   - `bias`：布林值，是否包含可學習偏差向量（預設為 `True`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。接收末尾維度為 `input_dims` 的張量，回傳投影後維度為 `output_dims` 的張量。內部若有偏置會自動調用底層硬體融合算子 `mx.addmm`。
+  - `to_quantized(group_size=64, bits=4, mode="affine", quantize_input=False)`：直接將此線性層轉換為量化線性層。若 `quantize_input=False` 轉為 `QuantizedLinear`（僅權重量化）；若 `quantize_input=True`（支援 `"nvfp4"`、`"mxfp8"`）轉為 `QQLinear`（同時量化權重與輸入激活值）。
+  - `weight`（屬性）：形狀為 `(output_dims, input_dims)` 的可學習權重矩陣。
+  - `bias`（屬性，選用）：形狀為 `(output_dims,)` 的可學習偏置向量（若初始化設定 `bias=True`）。
+  - 關鍵繼承方法：支援 `freeze(keys="bias")`、`set_dtype(mx.float16)`、`parameters()`、`save_weights()`。
 - **回傳值**：
   - 線性層實例物件。
 
@@ -1240,8 +1292,20 @@ import mlx.nn as nn
 
 layer = nn.Linear(64, 128)
 x = mx.random.normal((8, 64))
+
+# 1. 前向線性投影運算
 y = layer(x)
-print(y.shape)  # 假設印出：(8, 128)
+print(f"輸出維度: {y.shape}")  # 印出：(8, 128)
+
+# 2. 存取權重矩陣形狀
+print(f"權重形狀: {layer.weight.shape}")  # 印出：(128, 64)
+
+# 3. 凍結偏置參數 (僅更新權重矩陣)
+layer.freeze(keys="bias")
+
+# 4. 轉換為 4-bit 硬體量化線性層 (權重極致壓縮)
+q_layer = layer.to_quantized(group_size=64, bits=4)
+print(f"量化層型別: {type(q_layer).__name__}")  # 印出：QuantizedLinear
 ```
 
 ---
@@ -1249,10 +1313,21 @@ print(y.shape)  # 假設印出：(8, 128)
 ##### nn.QuantizedLinear 4-bit 與 8-bit 硬體量化線性層
 
 - **使用時機**：在 Mac 本地低記憶體環境下運行或推論開源大型語言模型（如 Llama 3、Mistral、Qwen）。直接在 Metal 上執行低位元仿射反量化矩陣乘法。
-- **語法**：`nn.QuantizedLinear(input_dims, output_dims, bits=4, group_size=64, bias=False)`
+- **語法**：`nn.QuantizedLinear(input_dims, output_dims, bias=False, group_size=64, bits=4, mode="affine")`
 - **參數說明**：
-  - `bits`：量化位元寬度（支援 `4` 或 `8`）。
-  - `group_size`：量化分組大小（常見為 `32`、`64` 或 `128`）。
+  - `input_dims`：輸入特徵維度大小。
+  - `output_dims`：輸出特徵維度大小。
+  - `bias`：布林值，是否包含偏置向量（預設為 `True`）。
+  - `group_size`：量化分組大小（支援 `32`、`64` 或 `128`，預設為 `64`）。
+  - `bits`：量化位元寬度（支援 `4` 或 `8`，預設為 `4`）。
+  - `mode`：量化演算法模式（支援 `"affine"`、`"mxfp4"`、`"nvfp4"`、`"mxfp8"`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。調用底層極速硬體核心 `mx.quantized_matmul`，以打包的整數權重、刻度（scales）與偏置進行反量化矩陣相乘。
+  - `from_linear(linear_layer, group_size=64, bits=4, mode="affine")`（類別方法 `classmethod`）：自現有的未量化 `nn.Linear` 實例就地提取權重並量化為 `QuantizedLinear` 物件。
+  - `weight`（屬性）：打包儲存的整數量化權重陣列。
+  - `scales`（屬性）：分組量化縮放係數張量。
+  - `biases`（屬性，選用）：仿射量化分組偏移張量。
+  - 繼承特性說明：量化層在初始化時即會自動呼叫 `self.freeze()`，權重不會被列入可訓練參數（`trainable_parameters()` 為空），專為推論加速設計。
 - **回傳值**：
   - 硬體量化線性層實例。
 
@@ -1260,15 +1335,22 @@ print(y.shape)  # 假設印出：(8, 128)
 import mlx.core as mx
 import mlx.nn as nn
 
-# 建立 4-bit 量化層 (佔用記憶體僅原先 float16 的 25%)
+# 1. 自既有線性層透過類別方法直接構建 4-bit 量化層
+base_linear = nn.Linear(1024, 1024)
 qlinear = nn.QuantizedLinear.from_linear(
-    nn.Linear(1024, 1024),
+    base_linear,
+    group_size=64,
     bits=4,
-    group_size=64
+    mode="affine"
 )
+
+# 2. 前向高速推論
 x = mx.random.normal((1, 1024))
 out = qlinear(x)
-print(out.shape)  # 假設印出：(1, 1024)
+print(f"推論輸出維度: {out.shape}")  # 印出：(1, 1024)
+
+# 3. 檢視量化權重與刻度屬性
+print(f"量化權重形狀: {qlinear.weight.shape}, 刻度形狀: {qlinear.scales.shape}")
 ```
 
 ---
@@ -1281,6 +1363,12 @@ print(out.shape)  # 假設印出：(1, 1024)
 - **參數說明**：
   - `num_embeddings`：詞彙庫大小 (Vocabulary Size)。
   - `dims`：每個詞嵌入向量之特徵維度 (Embedding Dimension)。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。接收任意形狀的整數索引張量，回傳查表特徵向量陣列 `self.weight[x]`。
+  - `as_linear(x)`：將詞嵌入矩陣當作線性層調用，執行 `x @ self.weight.T` 矩陣乘法。在自回歸 Transformer 語言模型中，非常適合用於**權重綁定 (Weight Tying / Tied Embeddings)**，以相同的詞嵌入矩陣直接作為 LM Head 的分類預測投影層，大幅節省顯存。
+  - `to_quantized(group_size=64, bits=4, mode="affine")`：回傳近似此嵌入層的高效量化版本 `QuantizedEmbedding`，將龐大的詞彙表嵌入矩陣壓縮為 4-bit 或 8-bit。
+  - `weight`（屬性）：形狀為 `(num_embeddings, dims)` 的可學習詞嵌入權重矩陣。
+  - 關鍵繼承方法：`set_dtype(mx.bfloat16)`、`parameters()`、`freeze()`。
 - **回傳值**：
   - 詞嵌入層神經模組實例。
 
@@ -1291,10 +1379,58 @@ import mlx.nn as nn
 # 詞彙表大小 32000，嵌入維度 512
 embedding = nn.Embedding(num_embeddings=32000, dims=512)
 
-# 輸入整數 Token ID: (Batch=2, Seq=4)
+# 1. 標準輸入 Token ID 前向查表: (Batch=2, Seq=4)
 tokens = mx.array([[101, 2054, 2003, 102], [101, 1045, 2066, 102]])
 vectors = embedding(tokens)
-print(vectors.shape)  # 假設印出：(2, 4, 512)
+print(f"嵌入特徵向量維度: {vectors.shape}")  # 印出：(2, 4, 512)
+
+# 2. 調用 as_linear() 執行權重綁定反向投影 (LM Head)
+# 將隱藏層表示投影回詞彙表維度的未歸一化對數機率 (Logits)
+hidden_states = mx.random.normal((2, 4, 512))
+logits = embedding.as_linear(hidden_states)
+print(f"LM Head 輸出 Logits 維度: {logits.shape}")  # 印出：(2, 4, 32000)
+
+# 3. 轉換為 4-bit 量化詞嵌入層
+q_embedding = embedding.to_quantized(group_size=64, bits=4)
+print(f"量化詞嵌入層型別: {type(q_embedding).__name__}")  # 印出：QuantizedEmbedding
+```
+
+---
+
+##### nn.QuantizedEmbedding 硬體量化詞嵌入查表層
+
+- **使用時機**：在大語言模型中詞彙量龐大（如 32,000 ~ 150,000+）時，詞嵌入權重往往佔用數百 MB 至數 GB 顯存。使用量化詞嵌入可在幾乎不損推論品質的前提下將嵌入層顯存縮減為 25%，大幅降低整體記憶體負擔。
+- **語法**：`nn.QuantizedEmbedding(num_embeddings, dims, group_size=64, bits=4, mode="affine")`
+- **參數說明**：
+  - `num_embeddings`：詞彙庫大小 (Vocabulary Size)。
+  - `dims`：每個詞嵌入向量特徵維度。
+  - `group_size`：分組量化大小（常見為 `64` 或 `128`）。
+  - `bits`：量化位元寬度（`4` 或 `8`）。
+  - `mode`：量化模式（預設 `"affine"`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。接收整數 Token ID，自量化權重中即時反量化提取特徵向量。
+  - `as_linear(x)`：以量化矩陣乘法將詞嵌入當作線性層輸出投影（計算 `mx.quantized_matmul(x, self.weight.T, ...)`）。
+  - `from_embedding(embedding_layer, group_size=64, bits=4, mode="affine")`（類別方法 `classmethod`）：自現有的 `nn.Embedding` 實例轉換並量化為 `QuantizedEmbedding`。
+  - `weight`, `scales`, `biases`（屬性）：打包儲存的量化權重陣列與量化刻度。
+- **回傳值**：
+  - 量化詞嵌入模組實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 1. 建立標準嵌入層並轉為 4-bit 量化詞嵌入
+base_emb = nn.Embedding(num_embeddings=10000, dims=256)
+q_emb = nn.QuantizedEmbedding.from_embedding(base_emb, group_size=64, bits=4)
+
+# 2. 量化查表推論
+tokens = mx.array([12, 45, 999])
+feats = q_emb(tokens)
+print(f"量化查表維度: {feats.shape}")  # 印出：(3, 256)
+
+# 3. 量化權重綁定輸出投影
+logits = q_emb.as_linear(feats)
+print(f"量化投影 Logits 維度: {logits.shape}")  # 印出：(3, 10000)
 ```
 
 ---
@@ -1305,6 +1441,14 @@ print(vectors.shape)  # 假設印出：(2, 4, 512)
 - **語法**：`nn.Dropout(p=0.5)`
 - **參數說明**：
   - `p`：丟棄機率值（介於 0.0 到 1.0 之間，預設為 0.5）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。當處於訓練模式（`self.training == True`）時，以伯努利分佈生成隨機二元遮罩，將元素置零並依 $\frac{1}{1-p}$ 縮放維持期望值；當處於評估模式（`self.training == False`）時，直接返回輸入 `x`（零額外運算開銷）。
+  - `train(mode=True)`：將 Dropout 層切換至訓練狀態（啟用隨機丟棄），回傳 `self`。
+  - `eval()`：將 Dropout 層切換至評估/推論狀態（關閉隨機丟棄，輸入直通），回傳 `self`。
+  - `training`（屬性）：布林值，查詢當前是否處於訓練啟用模式。
+  - 同系列模組成員：
+    - `nn.Dropout2d(p=0.5)`：2D 空間通道級丟棄。輸入形狀為 `(NHWC)` 或 `(HWC)`，隨機將整張特徵圖的某些特徵通道完全置零，特別適合淺層卷積神經網路。
+    - `nn.Dropout3d(p=0.5)`：3D 空間通道級丟棄。輸入形狀為 `(NDHWC)` 或 `(DHWC)`，針對 3D 體積資料整塊通道置零。
 - **回傳值**：
   - 隨機丟棄神經模組實例。
 
@@ -1315,14 +1459,24 @@ import mlx.nn as nn
 dropout = nn.Dropout(p=0.2)
 x = mx.ones((2, 5))
 
-# 1. 訓練模式: 隨機將部分元素置零並依 1/(1-p) 縮放
+# 1. 訓練模式: 啟用隨機丟棄並按 1/(1-p) 縮放
+dropout.train()
+print(f"當前模式狀態: training={dropout.training}")  # 印出：True
 y_train = dropout(x)
 mx.eval(y_train)
 
-# 2. 評估模式: 關閉 Dropout 直通輸入
+# 2. 評估模式: 關閉 Dropout，輸入完全直通
 dropout.eval()
+print(f"當前模式狀態: training={dropout.training}")  # 印出：False
 y_eval = dropout(x)
-print(y_eval)  # 假設印出：array([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], dtype=float32)
+print(y_eval)  # 印出：array([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], dtype=float32)
+
+# 3. 卷積特徵圖通道級丟棄 (Dropout2d，通道在後 NHWC)
+drop2d = nn.Dropout2d(p=0.5)
+drop2d.train()
+feature_map = mx.ones((2, 8, 8, 16))
+out_2d = drop2d(feature_map)
+print(f"2D 空間通道丟棄後維度: {out_2d.shape}")  # 印出：(2, 8, 8, 16)
 ```
 
 ---
@@ -1334,7 +1488,12 @@ print(y_eval)  # 假設印出：array([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], dtype=
 - **參數說明**：
   - `dims`：需要歸一化的特徵維度大小。
   - `eps`：極小常數，防止除以零。
-  - `affine`：布林值，是否包含可學習縮放係數與偏置向量。
+  - `affine`：布林值，是否包含可學習縮放係數與偏置向量（預設 `True`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。沿最後特徵維度計算均值與方差進行歸一化 $y = \frac{x - \mathrm{E}[x]}{\sqrt{\mathrm{Var}[x] + \epsilon}} \gamma + \beta$。
+  - `weight`（屬性）：可學習縮放係數向量 $\gamma$，形狀為 `(dims,)`（若 `affine=True`）。
+  - `bias`（屬性）：可學習偏移向量 $\beta$，形狀為 `(dims,)`（若 `affine=True`）。
+  - 關鍵繼承方法：`freeze(keys="bias")`、`set_dtype(mx.float16)`、`parameters()`。
 - **回傳值**：
   - 層歸一化模組實例。
 
@@ -1344,9 +1503,17 @@ import mlx.nn as nn
 
 ln = nn.LayerNorm(dims=64)
 x = mx.random.normal((4, 16, 64))
+
+# 1. 前向計算歸一化
 out = ln(x)
 mx.eval(out)
-print(out.shape)  # 假設印出：(4, 16, 64)
+print(f"歸一化輸出維度: {out.shape}")  # 印出：(4, 16, 64)
+
+# 2. 檢視與操作可學習參數
+print(f"縮放權重形狀: {ln.weight.shape}, 偏置形狀: {ln.bias.shape}")
+
+# 3. 凍結偏置參數 (僅微調仿射縮放)
+ln.freeze(keys="bias")
 ```
 
 ---
@@ -1358,6 +1525,10 @@ print(out.shape)  # 假設印出：(4, 16, 64)
 - **參數說明**：
   - `dims`：歸一化維度大小。
   - `eps`：極小常數，防止除以零。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：前向傳播。直接除以均方根並乘以縮放參數 $y = \frac{x}{\sqrt{\frac{1}{d} \sum x^2 + \epsilon}} \gamma$。底層呼叫 Metal 硬體優化核心。
+  - `weight`（屬性）：形狀為 `(dims,)` 的可學習縮放張量 $\gamma$。
+  - 關鍵繼承方法：`set_dtype(mx.bfloat16)`、`parameters()`、`update()`。
 - **回傳值**：
   - 均方根層歸一化神經模組實例。
 
@@ -1368,10 +1539,14 @@ import mlx.nn as nn
 # 初始化 RMSNorm 層
 norm_layer = nn.RMSNorm(dims=512, eps=1e-6)
 
+# 1. 前向計算均方根歸一化
 x = mx.random.normal((4, 32, 512))
 out = norm_layer(x)
 mx.eval(out)
-print(out.shape)  # 假設印出：(4, 32, 512)
+print(f"RMSNorm 輸出維度: {out.shape}")  # 印出：(4, 32, 512)
+
+# 2. 檢視權重向量
+print(f"權重向量形狀: {norm_layer.weight.shape}")  # 印出：(512,)
 ```
 
 ---
@@ -1379,10 +1554,21 @@ print(out.shape)  # 假設印出：(4, 32, 512)
 ##### nn.MultiHeadAttention 多頭自注意力神經層
 
 - **使用時機**：搭建 Transformer 編碼器、解碼器或各類序列特徵提取模型時使用。內部自動封裝 Query、Key、Value 線性投影、縮放點積注意力與最終輸出線性映射。
-- **語法**：`nn.MultiHeadAttention(dims, num_heads, bias=True)`
+- **語法**：`nn.MultiHeadAttention(dims, num_heads, bias=False)`
 - **參數說明**：
   - `dims`：輸入與輸出特徵總維度。
   - `num_heads`：注意力頭數量（必須能被 `dims` 整除）。
+  - `query_input_dims` / `key_input_dims` / `value_input_dims`：可選的輸入維度（預設為 `dims`）。
+  - `bias`：布林值，是否在線性投影中使用偏置（預設為 `False`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(queries, keys, values, mask=None)`：前向傳播。執行 Q、K、V 線性投影，重塑維度為多頭格式後調用 `mx.fast.scaled_dot_product_attention` 融合硬體核心，最後經輸出投影回傳特徵。
+  - `create_additive_causal_mask(N, dtype=mx.float32)`（靜態方法 `staticmethod`）：生成大小為 $(N, N)$ 的下三角加性因果注意力遮罩矩陣（未來位置填入 $-\infty$ 或該 dtype 之極小負數，過去與當前位置填入 0）。自回歸大模型生成時傳入 `mask` 防止注意力看見後續 Token。
+  - 內部子模組屬性：
+    - `query_proj`：`nn.Linear` 查詢投影層。
+    - `key_proj`：`nn.Linear` 鍵投影層。
+    - `value_proj`：`nn.Linear` 值投影層。
+    - `out_proj`：`nn.Linear` 輸出投影層。
+  - 關鍵繼承方法：`freeze()`、`set_dtype()`、`parameters()`。
 - **回傳值**：
   - 多頭注意力模組實例。
 
@@ -1393,10 +1579,20 @@ import mlx.nn as nn
 # 512 維度，8 個注意力頭 (每個頭 64 維)
 mha = nn.MultiHeadAttention(dims=512, num_heads=8)
 
-x = mx.random.normal((2, 16, 512))
-out = mha(queries=x, keys=x, values=x)
+# 1. 調用靜態方法生成加性因果遮罩 (預防自回歸推論看到未來 Token)
+seq_len = 16
+causal_mask = nn.MultiHeadAttention.create_additive_causal_mask(seq_len)
+print(f"因果遮罩形狀: {causal_mask.shape}")  # 印出：(16, 16)
+
+# 2. 帶因果遮罩的前向自注意力計算
+x = mx.random.normal((2, seq_len, 512))
+out = mha(queries=x, keys=x, values=x, mask=causal_mask)
 mx.eval(out)
-print(out.shape)  # 假設印出：(2, 16, 512)
+print(f"多頭注意力輸出維度: {out.shape}")  # 印出：(2, 16, 512)
+
+# 3. 檢視內部子模組投影層
+print("投影子模組:", list(mha.children().keys()))
+# 印出：[query_proj, key_proj, value_proj, out_proj]
 ```
 
 ---
@@ -1404,13 +1600,19 @@ print(out.shape)  # 假設印出：(2, 16, 512)
 ##### nn.Conv2d 二維卷積神經網路層
 
 - **使用時機**：處理圖像識別、卷積神經網路骨幹 (CNN) 或多模態模型視覺編碼器 (Vision Transformer Patch 投影) 時使用。
-- **語法**：`nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True)`
+- **語法**：`nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)`
 - **參數說明**：
   - `in_channels`：輸入通道數。
   - `out_channels`：輸出通道數（卷積核數量）。
   - `kernel_size`：卷積核尺寸（整數或雙整數元組）。
-  - `stride`：步長大小。
-  - `padding`：邊界填充大小。
+  - `stride`：步長大小（預設 1）。
+  - `padding`：邊界填充大小（預設 0）。
+  - `bias`：是否使用偏差向量（預設 `True`）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - `__call__(x)`：接收通道在後（`NHWC`：批次, 高, 寬, 通道）的四維影像特徵張量執行二維卷積運算。
+  - `weight`（屬性）：卷積核權重張量，形狀為 `(out_channels, kH, kW, in_channels)`。
+  - `bias`（屬性，選用）：偏置向量，形狀為 `(out_channels,)`（若 `bias=True`）。
+  - 關鍵繼承方法：`freeze(keys="bias")`、`set_dtype(mx.float16)`、`parameters()`。
 - **回傳值**：
   - 二維卷積層模組實例。
 
@@ -1423,9 +1625,17 @@ conv = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1)
 
 # 注意：MLX 預設使用通道在後的維度佈局 (Batch, Height, Width, Channels)
 img = mx.random.normal((1, 32, 32, 3))
+
+# 1. 前向卷積特徵提取
 feat = conv(img)
 mx.eval(feat)
-print(feat.shape)  # 假設印出：(1, 32, 32, 16)
+print(f"卷積輸出形狀: {feat.shape}")  # 印出：(1, 32, 32, 16)
+
+# 2. 檢視卷積核張量形狀
+print(f"卷積權重矩陣形狀: {conv.weight.shape}")  # 印出：(16, 3, 3, 3)
+
+# 3. 凍結偏置參數
+conv.freeze(keys="bias")
 ```
 
 ---
@@ -1435,18 +1645,45 @@ print(feat.shape)  # 假設印出：(1, 32, 32, 16)
 - **使用時機**：模型結構為線性前向串聯結構時，免除繁瑣的手動 forward 宣告。
 - **語法**：`nn.Sequential(*layers)`
 - **參數說明**：
-  - `*layers`：依序執行的神經網路層序列。
+  - `*layers`：依序執行的神經網路層或可調用物件序列。
+- **物件方法與容器操作 (Methods & Container Operations)**：
+  - `__call__(x)`：依順序逐層調用內部註冊的模組或函數。
+  - `layers`（屬性）：內部子模組串列（`list[nn.Module]`）。
+  - 容器特有操作：
+    - 索引存取：`model.layers[0]` 可直接存取特定層。
+    - 切片與長度：`len(model.layers)` 取得層數，支援列表切片。
+    - 動態替換：支援原位修改 `model.layers[i] = new_layer` 或呼叫 `model.update_modules({"layers": {"0": new_layer}})`。
+    - 遞迴繼承方法：呼叫 `model.train()`、`model.eval()`、`model.freeze()`、`model.set_dtype()` 時會自動遞迴作用於內部所有子層。
 - **回傳值**：
   - 順序神經網路容器實例。
 
 ```python
+import mlx.core as mx
 import mlx.nn as nn
 
+# 1. 構建前向順序網路容器
 model = nn.Sequential(
-    nn.Linear(10, 20),
-    nn.GELU(),
-    nn.Linear(20, 2)
+    nn.Linear(64, 128),
+    nn.ReLU(),
+    nn.Dropout(0.2),
+    nn.Linear(128, 10)
 )
+
+# 2. 容器層索引存取與層數檢視
+print(f"網路容器總層數: {len(model.layers)}")  # 印出：4
+print(f"首層型別: {type(model.layers[0]).__name__}")  # 印出：Linear
+
+# 3. 前向計算
+x = mx.random.normal((2, 64))
+out = model(x)
+print(f"輸出形狀: {out.shape}")  # 印出：(2, 10)
+
+# 4. 全域遞迴評估模式切換 (自動傳遞至內部的 Dropout)
+model.eval()
+print(f"內部 Dropout 是否為訓練模式: {model.layers[2].training}")  # 印出：False
+
+# 5. 動態熱插拔替換第 0 層
+model.layers[0] = nn.Linear(64, 128, bias=False)
 ```
 
 ---
