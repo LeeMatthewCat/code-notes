@@ -1478,7 +1478,7 @@ print(f"FFN 第一層權重精度: {block.ffn.layers[0].weight.dtype}")  # 印�
 - **語法**：`nn.Linear(input_dims, output_dims, bias=True)`
 - **參數說明**：
   - `input_dims`：輸入特徵維度大小。
-  - `output_dims`：輸出特徵維度大小。
+  - `output_dims`：輸出特徵維度大小（**只改變最後一個維度**）。
   - `bias`：布林值，是否包含可學習偏差向量（預設為 `True`）。
 - **物件方法與成員 (Methods & Attributes)**：
   - `__call__(x)`：前向傳播。接收末尾維度為 `input_dims` 的張量，回傳投影後維度為 `output_dims` 的張量。內部若有偏置會自動調用底層硬體融合算子 `mx.addmm`。
