@@ -222,6 +222,7 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 | **[[#nn.LayerNorm 標準層歸一化神經層\|nn.LayerNorm]]** | **沿特徵維度計算均值與方差並套用可學習仿射參數歸一化** | 經典 Transformer、BERT 與 ViT 的特徵穩定歸一化 |
 | **[[#nn.RMSNorm 均方根層歸一化層\|nn.RMSNorm]]** | **現代大語言模型必備之無偏置均方根正規化模組** | 構建 Llama 3、Mistral 等架構之 Pre-Norm 層 |
 | **[[#nn.RoPE 旋轉位置編碼神經模組\|nn.RoPE]]** | **大語言模型必備之相對旋轉位置編碼模組** | Llama 3、Qwen、Mistral 等架構 Query 與 Key 位置編碼與 KV Cache 增量推論 |
+| **[[#YarnRoPE YaRN 長上下文旋轉位置編碼神經模組\|YarnRoPE]]** | **繼承 nn.Module 之 YaRN 超長上下文旋轉位置編碼神經模組** | 現代長文本開源 LLM (16K/32K/128K) 查詢與鍵向量 YaRN 自適應位置編碼 |
 | **[[#nn.MultiHeadAttention 多頭自注意力神經層\|nn.MultiHeadAttention]]** | **經典 Transformer 多頭注意力機制神經網路模組** | 序列特徵建模、長文字自注意力表示提取 |
 | **[[#nn.Conv2d 二維卷積神經網路層\|nn.Conv2d]]** | **對影像或網格狀資料執行二維空間特徵卷積提取** | 電腦視覺影像分類、卷積神經網絡 (CNN) 骨幹 |
 | **[[#nn.Sequential 順序式神經網路容器\|nn.Sequential]]** | **將多個神經網路層按宣告順序串聯執行** | 快速搭建前饋神經網路、卷積特徵提取層 |
@@ -2327,6 +2328,71 @@ q_partial = mx.random.normal((1, 8, 4, 64))
 q_partial_rot = partial_rope(q_partial)
 assert mx.all(q_partial_rot[..., 32:] == q_partial[..., 32:])
 print("部分旋轉驗證成功: 超出 dims 部分保持原樣不變！")
+```
+
+---
+
+##### YarnRoPE YaRN 長上下文旋轉位置編碼神經模組
+
+- **使用時機**：建構超長上下文（如 16K、32K、128K 等）大語言模型注意力層時使用。`YarnRoPE` 繼承自 `mlx.nn.Module`，是專為 YaRN (Yet another RoPE extensioN) 演算法打造的神經網路層。相較於標準 `nn.RoPE`，它在內部固化了自適應三段式頻率波長陣列 `_freqs` 與注意力分佈溫度係數 `mscale`，能同時維持相鄰 Token 的局部高頻位置分辨率，並消除長距離旋轉角度外推時的注意力發散。
+- **建立方式（核心規範）**：
+  > **[核心天條]**：`YarnRoPE` 內部依賴複雜的三段式頻率幾何劃分與注意力溫度計算，**強烈禁止手動實例化或手刻內部頻率矩陣**！官方標準實踐是**統一透過工廠函式 `initialize_rope()` 進行動態產生**。只需傳入對應的 `scaling_config` 字典，函式便會自動解析超參數並回傳封裝完成的 `YarnRoPE` 神經模組實例。
+- **語法**：
+  - **推薦生成方式（工廠函式）**：
+    `rope = initialize_rope(dims, base=10000.0, scaling_config={"rope_type": "yarn", "factor": 4.0, "original_max_position_embeddings": 4096, ...})`
+  - **前向調用**：
+    `rope(x, offset: int = 0)`
+- **物件方法與成員 (Methods & Attributes)**：
+  - **前向計算與硬體融合**：
+    - `__call__(x, offset: int = 0)`：前向位置編碼計算。
+      - `x`：待旋轉的 Query 或 Key 多維張量（如 `(Batch, Heads, Seq, Head_Dim)`）。若 `mscale` 不為 1.0，前向過程會自動乘以該係數修正注意力矩陣 Softmax 熵增。
+      - `offset`：KV Cache 增量解碼偏移量（Prefill 階段為 0，自回歸 Decode 階段為當前累積長度）。
+      - **Metal 硬體融合加速**：內部呼叫原生加速算子 `mx.fast.rope(x, self.dims, traditional=self.traditional, base=None, scale=1.0, offset=offset, freqs=self._freqs)`，直接將 YaRN 客製化頻率傳入 GPU 著色核心執行硬體融合旋轉。
+  - **繼承自 `nn.Module` 的架構特性**：
+    - **完全相容神經網路容器**：作為 `nn.Module` 的具體子類別，能直接作為屬性嵌入 Transformer 注意力區塊（如 `self.rope = initialize_rope(...)`），隨父模組一同參與 `model.eval()` 狀態切換與 `model.set_dtype()` 精度轉換。
+    - **純數學無狀態轉換**：不含任何可學習權重矩陣，`parameters()` 回傳為空字典 `{}`，不會佔用模型訓練權重顯存，亦不產生反向傳播梯度。
+- **回傳值**：
+  - `YarnRoPE` 神經模組實例（`isinstance(instance, nn.Module)` 為 `True`）。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+from mlx_lm.models.rope_utils import initialize_rope
+
+# 1. 規範做法：必須透過 initialize_rope() 傳入 yarn 組態動態產生
+yarn_config = {
+    "rope_type": "yarn",
+    "factor": 4.0,                             # 將 4K 上下文擴充 4 倍至 16K
+    "original_max_position_embeddings": 4096,  # 原生預訓練基準長度
+    "beta_fast": 32.0,                         # 高頻截止門檻 (波長短於此不內插)
+    "beta_slow": 1.0,                          # 低頻截止門檻 (波長長於此完全線性內插)
+}
+
+rope = initialize_rope(
+    dims=64,
+    base=10000.0,
+    scaling_config=yarn_config,
+    max_position_embeddings=16384,
+)
+
+# 2. 驗證 YarnRoPE 繼承自 nn.Module
+print("模組型別名稱:", type(rope).__name__)          # 假設印出：YarnRoPE
+print("驗證是否繼承 nn.Module:", isinstance(rope, nn.Module))  # 假設印出：True
+print("模組可學習參數:", rope.parameters())          # 假設印出：{} (純數學確定性變換)
+
+# 3. Prefill 階段：對長輸入序列進行旋轉編碼 (8192 長度)
+q_prefill = mx.random.normal((1, 8, 8192, 64))
+k_prefill = mx.random.normal((1, 8, 8192, 64))
+q_rot = rope(q_prefill, offset=0)
+k_rot = rope(k_prefill, offset=0)
+mx.eval(q_rot, k_rot)
+print("Prefill 旋轉後維度:", q_rot.shape)  # 假設印出：(1, 8, 8192, 64)
+
+# 4. Decode 增量解碼階段 (KV Cache)：為第 8193 個 Token 編碼 (傳入 offset=8192)
+q_step = mx.random.normal((1, 8, 1, 64))
+q_step_rot = rope(q_step, offset=8192)
+mx.eval(q_step_rot)
+print("Decode 增量 Token 維度:", q_step_rot.shape)  # 假設印出：(1, 8, 1, 64)
 ```
 
 ---
