@@ -165,8 +165,22 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 | **[[#mx.eval() 強制觸發惰性運算求值\|mx.eval()]]** | **顯式強制計算惰性求值圖譜並釋放中繼節點** | 批次訓練迴圈、釋放圖暫存、取得具體數值 |
 | **[[#mx.default_device() 查詢或設定預設運算裝置\|mx.default_device()]]** | **查詢或切換預設執行硬體 (GPU / CPU)** | 效能調優、強制特定算子於 CPU 上執行 |
 | **[[#mx.savez() 與 mx.load() 序列化與載入張量權重\|mx.savez() / mx.load()]]** | **將多個張量以 safetensors 或 npz 格式儲存與讀取** | 模型檢查點保存、權重匯出、跨平台參數交換 |
+| **[[#mx.reshape() 與 array.reshape() 重構張量維度形狀\|mx.reshape() / .reshape()]]** | **重組張量維度結構並支援 -1 自動維度推斷** | Transformer 隱藏層投影轉換、批次序列打散與拍平 |
+| **[[#mx.transpose() 與 array.T / array.mT 軸向轉置與批次矩陣轉置\|mx.transpose() / .T / .mT]]** | **任意多維軸向重新排列 (Permute) 與批次矩陣轉置** | 多頭注意力 (B, S, H, D) 轉置為 (B, H, S, D)、矩陣相乘對齊 |
+| **[[#mx.swapaxes() 與 mx.moveaxis() 指定維度軸向交換與移動\|mx.swapaxes() / mx.moveaxis()]]** | **精確交換兩維度或將特定軸移動至目標位置** | 視覺特徵圖 NCHW 與 NHWC 通道佈局轉換、注意力維度微調 |
+| **[[#mx.squeeze() 與 mx.expand_dims() 壓縮單元維度與擴展虛擬軸\|mx.squeeze() / mx.expand_dims()]]** | **消除大小為 1 的多餘單元軸或在指定位置插入新維度** | 移除單一樣本批次維度、擴展廣播軸向以執行張量運算 |
+| **[[#mx.flatten() 與 mx.unflatten() 展平張量維度與指定軸還原結構\|mx.flatten() / mx.unflatten()]]** | **拍平多維張量為向量或將指定軸拆解還原為子維度** | 卷積特徵展平送入分類頭、多頭輸出維度拆解還原 |
 | **[[#mx.concatenate() 沿指定軸拼接張量序列\|mx.concatenate()]]** | **將多個相同維度張量沿指定軸向進行無縫拼接** | 特徵拼接、多模態表示融合、批次資料整合 |
+| **[[#mx.stack() 與 mx.unstack() 沿新維度堆疊張量與反向解包\|mx.stack() / mx.unstack()]]** | **沿全新維度軸向堆疊多個張量或解包切片為列表** | 批次資料建構、多特徵向量組合為矩陣、切片解包 |
 | **[[#mx.split() 沿指定軸切分張量為子陣列清單\|mx.split()]]** | **將單一張量沿指定維度均等或按索引切分為子張量** | 多頭注意力 QKV 投影切分、特徵分塊處理 |
+| **[[#mx.broadcast_to() 零拷貝廣播擴充目標形狀\|mx.broadcast_to()]]** | **以虛擬步長零拷貝方式將張量廣播延伸為目標尺寸** | 偏置向量擴展相加、因果注意力遮罩廣播至多頭與批次 |
+| **[[#mx.repeat() 與 mx.tile() 元素級重複與多維平鋪擴展\|mx.repeat() / mx.tile()]]** | **沿指定軸進行元素就地重複或將張量整體磁磚化平鋪** | GQA (Grouped-Query Attention) 頭數複製、批次維度擴展 |
+| **[[#mx.pad() 多維張量邊界填充\|mx.pad()]]** | **沿多維度邊界填充常數、反射或邊緣數值** | CNN 特徵圖邊界填充、長度不一文本序列補齊 (Padding) |
+| **[[#mx.where() 條件三元選擇算子\|mx.where()]]** | **依據布林條件在兩張量或純量間挑選元素 (c ? x : y)** | 自訂非線性啟動函數、因果注意力遮罩生成、邊界截斷 |
+| **[[#mx.take() 與 mx.take_along_axis() 多維陣列索引抽取\|mx.take() / mx.take_along_axis()]]** | **依離散索引或沿特定軸向依多維索引矩陣抽取數值** | 詞嵌入離散 Token 查表、提取預測最大機率標籤分數 |
+| **[[#array.at[...] 函數式不可變局部更新\|array.at[...]]]** | **JAX 風格純函數式局部元素與切片數值運算** | 不可變張量安全局部累加、保持 JIT 編譯圖純函數性 |
+| **[[#array.view() 底層二進位記憶體型別重釋\|array.view()]]** | **保持底層 Byte 記憶體不變重新以新型別解讀資料** | 浮點與無符號整數二進位位元重釋、底層編碼操作 |
+| **[[#mx.flip() 與 mx.roll() 維度翻轉與循環滾動位移\|mx.flip() / mx.roll()]]** | **沿指定軸反轉元素排列順序或進行循環滾動位移** | 時間序列逆序、Swin Transformer 移動視窗注意力 (Shifted Window) |
 | **[[#mx.metal.get_active_memory() 查詢當前 Metal 活躍使用記憶體\|mx.metal.get_active_memory()]]** | **獲取當前配置於 GPU 且尚在使用的記憶體位元組數** | 顯存佔用監控、OOM 異常前置診斷、批次大小調優 |
 | **[[#mx.metal.clear_cache() 清理 Metal 釋放快取池釋放實體記憶體\|mx.metal.clear_cache()]]** | **釋放底層 Metal 記憶體配置器快取池中的閒置記憶體** | 大模型載入前後釋放記憶體、批次訓練間隙記憶體重置 |
 | **[[#mx.random.seed() 設定全域隨機種子\|mx.random.seed()]]** | **設定全域 PRNG 隨機狀態種子數值** | 快速原型開發、腳本執行全域隨機性重現 |
@@ -405,12 +419,181 @@ print(loaded["w"])  # 假設印出：array([1, 2], dtype=float32)
 
 ---
 
+##### mx.reshape() 與 array.reshape() 重構張量維度形狀
+
+- **使用時機**：改變張量的維度幾何結構而不改變元素總數與底層記憶體資料順序（行優先 C-order）。常見於 Transformer 隱藏層投影轉換、批次序列拍平為矩陣 `(Batch, Seq, Dim) -> (Batch*Seq, Dim)`，或將單一維度展開為多頭維度 `(Batch, Seq, Dim) -> (Batch, Seq, Heads, Head_Dim)`。
+- **語法**：
+  - `array.reshape(*shape)` 或 `array.reshape(shape)`
+  - `mx.reshape(array, shape)`
+- **參數說明**：
+  - `shape`：整數元組或連續展開的整數。支援傳入 `-1` 代表該維度由系統自動推斷計算（單次調用僅允許一個 `-1`）。
+- **回傳值**：
+  - `mx.array`：具備新幾何維度結構的張量視圖。
+
+```python
+import mlx.core as mx
+
+x = mx.arange(12)  # 一維張量: [0, 1, 2, ..., 11]
+
+# 1. 顯式指定目標形狀 (3 列 4 行)
+r1 = x.reshape(3, 4)
+print(f"r1 形狀: {r1.shape}")  # 印出：(3, 4)
+
+# 2. 使用 -1 自動推斷未知維度 (設定 2 列，自動推算為 6 行)
+r2 = x.reshape(2, -1)
+print(f"r2 形狀: {r2.shape}")  # 印出：(2, 6)
+
+# 3. 模擬 Transformer 多頭注意力維度拆解: (Batch=2, Seq=16, Dim=512) -> (2, 16, 8, 64)
+hidden_states = mx.random.normal((2, 16, 512))
+heads = hidden_states.reshape(2, 16, 8, 64)
+print(f"拆分多頭後形狀: {heads.shape}")  # 印出：(2, 16, 8, 64)
+```
+
+---
+
+##### mx.transpose() 與 array.T / array.mT 軸向轉置與批次矩陣轉置
+
+- **使用時機**：矩陣轉置與任意多維軸向重新排列（等同 PyTorch 中的 `permute`）。最經典應用是在 Multi-Head Attention 中將序列維度與注意力頭維度對調 `(Batch, Seq, Heads, Dim) -> (Batch, Heads, Seq, Dim)`，以便對各頭獨立進行並行矩陣乘法。
+- **語法**：
+  - `array.T`：轉置屬性。對一維張量無影響，對二維矩陣反轉行列，對多維張量完全顛倒所有軸向順序。
+  - `array.mT`：批次矩陣轉置（Matrix Transpose）屬性。僅交換最後兩維 `(*, M, N) -> (*, N, M)`，完美保留所有前置批次與注意力頭維度。
+  - `mx.transpose(a, axes=None)` 或 `array.transpose(*axes)`：按指定軸序列進行任意多維置換。
+- **參數說明**：
+  - `axes`：指定新維度順序的整數元組或序列。若為 `None` 則完全顛倒所有維度。
+- **回傳值**：
+  - `mx.array`：軸向重新排列後的張量。
+
+```python
+import mlx.core as mx
+
+# 1. 二維矩陣標準轉置
+mat = mx.array([[1, 2, 3], [4, 5, 6]])
+print(f"原始形狀: {mat.shape}, 轉置後形狀: {mat.T.shape}")  # 印出：(2, 3) 與 (3, 2)
+
+# 2. 多頭注意力關鍵轉置: (Batch=2, Seq=16, Heads=8, Head_Dim=64)
+# 交換 Seq 與 Heads 軸向 -> (Batch=2, Heads=8, Seq=16, Head_Dim=64)
+q = mx.random.normal((2, 16, 8, 64))
+q_transposed = q.transpose(0, 2, 1, 3)
+print(f"多頭獨立前向形狀: {q_transposed.shape}")  # 印出：(2, 8, 16, 64)
+
+# 3. 批次矩陣轉置 .mT: 僅交換末尾兩維，用於 Attention 點積 Q @ K.mT
+k_transposed = q_transposed  # 假設 K 與 Q 形狀相同
+attn_scores = q_transposed @ k_transposed.mT
+print(f"注意力分數矩陣形狀: {attn_scores.shape}")  # 印出：(2, 8, 16, 16)
+```
+
+---
+
+##### mx.swapaxes() 與 mx.moveaxis() 指定維度軸向交換與移動
+
+- **使用時機**：
+  - `swapaxes`：精確對調兩個指定的軸向，簡潔易讀。
+  - `moveaxis`：將指定維度從來源位置移動至目標位置（如在電腦視覺中將影像通道軸由末尾移動至前置 `NHWC -> NCHW`，或反向調整）。
+- **語法**：
+  - `mx.swapaxes(a, axis1, axis2)` 或 `array.swapaxes(axis1, axis2)`
+  - `mx.moveaxis(a, source, destination)` 或 `array.moveaxis(source, destination)`
+- **參數說明**：
+  - `axis1`, `axis2`：待互換的兩軸整數索引。
+  - `source`, `destination`：來源軸索引與目標軸索引。
+- **回傳值**：
+  - `mx.array`：軸向調整後的張量。
+
+```python
+import mlx.core as mx
+
+x = mx.zeros((2, 16, 8, 64))
+
+# 1. 使用 swapaxes 交換第 1 軸 (Seq) 與第 2 軸 (Heads)
+s = x.swapaxes(1, 2)
+print(f"swapaxes 後形狀: {s.shape}")  # 印出：(2, 8, 16, 64)
+
+# 2. 使用 moveaxis 將通道軸從最後移動至第 1 軸: (B, H, W, C) -> (B, C, H, W)
+img_nhwc = mx.zeros((4, 32, 32, 3))
+img_nchw = img_nhwc.moveaxis(-1, 1)
+print(f"moveaxis 轉換形狀: {img_nchw.shape}")  # 印出：(4, 3, 32, 32)
+```
+
+---
+
+##### mx.squeeze() 與 mx.expand_dims() 壓縮單元維度與擴展虛擬軸
+
+- **使用時機**：
+  - `squeeze`：去除張量中大小為 1 的多餘維度（如批次處理完成後將 `(1, 128)` 壓縮為 `(128,)`，或將單通道灰階影像 `(28, 28, 1)` 轉為 `(28, 28)`）。
+  - `expand_dims` 或 `None` / `mx.newaxis`：在指定軸位置插入一個長度為 1 的新維度，常用於使形狀符合廣播運算或批次輸入需求。
+- **語法**：
+  - `mx.squeeze(a, axis=None)` 或 `array.squeeze(axis=None)`
+  - `mx.expand_dims(a, axis)`
+  - 切片語法糖：`array[None, :]`、`array[:, None]` 或 `array[:, mx.newaxis, :]`
+- **參數說明**：
+  - `axis`：欲壓縮或擴展的目標軸整數或元組。若 `squeeze` 未指定 `axis` 則壓縮所有為 1 的維度。
+- **回傳值**：
+  - `mx.array`：維度增減後的張量。
+
+```python
+import mlx.core as mx
+
+feat = mx.zeros((1, 32, 1, 128))
+
+# 1. 壓縮所有大小為 1 的單元軸
+sq_all = feat.squeeze()
+print(f"全壓縮形狀: {sq_all.shape}")  # 印出：(32, 128)
+
+# 2. 僅壓縮第 0 軸 (保留第 2 軸)
+sq_0 = feat.squeeze(axis=0)
+print(f"指定軸壓縮形狀: {sq_0.shape}")  # 印出：(32, 1, 128)
+
+# 3. expand_dims 擴展維度: 插入注意力頭軸 (32, 128) -> (32, 1, 128)
+expanded = mx.expand_dims(sq_all, axis=1)
+print(f"expand_dims 形狀: {expanded.shape}")  # 印出：(32, 1, 128)
+
+# 4. 使用 None / mx.newaxis 切片語法糖 (等價於 expand_dims)
+syntax_exp = sq_all[:, None, :]
+print(f"切片擴展形狀: {syntax_exp.shape}")  # 印出：(32, 1, 128)
+```
+
+---
+
+##### mx.flatten() 與 mx.unflatten() 展平張量維度與指定軸還原結構
+
+- **使用時機**：
+  - `flatten`：將多個維度壓平成單一維度。常用於全連接分類頭前拍平卷積特徵圖 `(Batch, H, W, C) -> (Batch, H*W*C)`，或在自注意力完成後將多頭維度合併回隱藏維度。
+  - `unflatten`：`flatten` 的逆向操作。將張量中某個指定軸拆解還原為多維幾何結構，免去手動計算整數 tuple 的繁瑣過程。
+- **語法**：
+  - `mx.flatten(a, start_axis=0, end_axis=-1)` 或 `array.flatten(start_axis=0, end_axis=-1)`
+  - `mx.unflatten(a, axis, shape)`
+- **參數說明**：
+  - `start_axis`, `end_axis`：展平的起始與終止軸索引（包含該軸）。
+  - `axis`：`unflatten` 中欲拆解的目標軸索引。
+  - `shape`：目標軸拆解後的子形狀元組。
+- **回傳值**：
+  - `mx.array`：展平或結構還原後的張量。
+
+```python
+import mlx.core as mx
+
+# 1. 多頭注意力輸出: (Batch=2, Heads=8, Seq=16, Dim=64)
+attn_out = mx.random.normal((2, 8, 16, 64))
+
+# 轉置回 (Batch=2, Seq=16, Heads=8, Dim=64)
+attn_trans = attn_out.transpose(0, 2, 1, 3)
+
+# 2. 將最後兩維 (Heads, Dim) 展平合併為單一隱藏特徵維度 512
+flattened = attn_trans.flatten(start_axis=2, end_axis=3)
+print(f"合併多頭後形狀: {flattened.shape}")  # 印出：(2, 16, 512)
+
+# 3. 使用 unflatten 逆向將最後一維 (512) 重新拆解回 (Heads=8, Dim=64)
+unflattened = mx.unflatten(flattened, axis=-1, shape=(8, 64))
+print(f"還原結構後形狀: {unflattened.shape}")  # 印出：(2, 16, 8, 64)
+```
+
+---
+
 ##### mx.concatenate() 沿指定軸拼接張量序列
 
-- **使用時機**：在多特徵融合、RNN/LSTM 狀態串聯或沿特徵維度組合多個張量時使用。
+- **使用時機**：在多特徵融合、RNN/LSTM 狀態串聯、多模態表示串接或沿着現有維度組合多個張量時使用。
 - **語法**：`mx.concatenate(arrays, axis=0)`
 - **參數說明**：
-  - `arrays`：由待拼接張量組成的序列清單。
+  - `arrays`：由待拼接張量組成的序列清單。所有張量除了拼接軸外，其餘維度尺寸必須嚴格相等。
   - `axis`：沿著進行拼接的目標維度軸向（預設為 0）。
 - **回傳值**：
   - `mx.array`：沿指定軸完成拼接合併後的新張量。
@@ -424,15 +607,51 @@ x2 = mx.zeros((2, 3))
 # 沿特徵欄位軸 (axis=1) 橫向拼接
 combined = mx.concatenate([x1, x2], axis=1)
 mx.eval(combined)
-print(combined.shape)  # 假設印出：(2, 6)
+print(f"拼接後形狀: {combined.shape}")  # 印出：(2, 6)
+```
+
+---
+
+##### mx.stack() 與 mx.unstack() 沿新維度堆疊張量與反向解包
+
+- **使用時機**：
+  - `stack`：將多個形狀完全相同的張量沿著「一個全新創建的維度」堆疊起來（與 `concatenate` 在既有軸擴充不同）。例如將多筆獨立樣本特徵向量堆疊成一個批次矩陣。
+  - `unstack`：沿指定軸將張量切片拆解回子張量清單。
+- **語法**：
+  - `mx.stack(arrays, axis=0)`
+  - `mx.unstack(array, axis=0)`
+- **參數說明**：
+  - `arrays`：待堆疊的張量清單（形狀必須完全一致）。
+  - `axis`：新維度插入的位置索引。
+- **回傳值**：
+  - `stack`：維度增加 1 的新張量。
+  - `unstack`：子張量組成的 Python 清單。
+
+```python
+import mlx.core as mx
+
+v1 = mx.array([1, 2, 3])
+v2 = mx.array([4, 5, 6])
+
+# 1. 沿第 0 軸堆疊 (形狀由 (3,) 提升至 (2, 3))
+stacked_0 = mx.stack([v1, v2], axis=0)
+print(f"stack axis=0 形狀: {stacked_0.shape}")  # 印出：(2, 3)
+
+# 2. 沿第 1 軸堆疊 (形狀提升至 (3, 2))
+stacked_1 = mx.stack([v1, v2], axis=1)
+print(f"stack axis=1 形狀: {stacked_1.shape}")  # 印出：(3, 2)
+
+# 3. unstack 反向解包為清單
+unstacked_list = mx.unstack(stacked_0, axis=0)
+print(f"解包數量: {len(unstacked_list)}, 單個形狀: {unstacked_list[0].shape}")  # 印出：2 與 (3,)
 ```
 
 ---
 
 ##### mx.split() 沿指定軸切分張量為子陣列清單
 
-- **使用時機**：多頭注意力機制中將大線性投影矩陣切分為 Query、Key、Value，或將資料集切分為多塊時使用。
-- **語法**：`mx.split(array, indices_or_sections, axis=0)`
+- **使用時機**：多頭注意力機制中將大線性投影矩陣切分為 Query、Key、Value，或將資料集沿樣本軸切分為多塊時使用。
+- **語法**：`mx.split(array, indices_or_sections, axis=0)` 或 `array.split(indices_or_sections, axis=0)`
 - **參數說明**：
   - `array`：待切分的原始多維張量。
   - `indices_or_sections`：整數（均等切分成 N 等份），或整數序列（切分點索引列表）。
@@ -448,8 +667,267 @@ qkv = mx.random.normal((2, 16, 768))
 
 # 沿最後一維均等切分為 3 個 256 維度的獨立張量
 q, k, v = mx.split(qkv, indices_or_sections=3, axis=-1)
-print(q.shape)  # 假設印出：(2, 16, 256)
-print(k.shape)  # 假設印出：(2, 16, 256)
+print(f"Q 形狀: {q.shape}, K 形狀: {k.shape}, V 形狀: {v.shape}")
+# 印出：Q 形狀: (2, 16, 256), K 形狀: (2, 16, 256), V 形狀: (2, 16, 256)
+```
+
+---
+
+##### mx.broadcast_to() 零拷貝廣播擴充目標形狀
+
+- **使用時機**：顯式將張量廣播到更大的形狀（例如將一維偏置向量 `(Dim,)` 擴充為 `(Batch, Seq, Dim)`，或將二維因果遮罩 `(1, 1, Seq, Seq)` 廣播至所有批次與注意力頭）。
+- **底層架構優勢**：在 Apple Silicon 統一記憶體中，廣播運算僅透過步長（Strides）設為 0 來達成視圖擴展，**完全不會複製任何底層記憶體資料**，開銷為零。
+- **語法**：`mx.broadcast_to(array, shape)`
+- **參數說明**：
+  - `array`：待廣播的原張量。
+  - `shape`：目標幾何形狀（必須相容於 NumPy 廣播規則）。
+- **回傳值**：
+  - `mx.array`：廣播擴展後的新張量視圖。
+
+```python
+import mlx.core as mx
+
+# 1. 將一維特徵偏置 (3,) 廣播至 (4, 3) 矩陣
+bias = mx.array([10.0, 20.0, 30.0])
+broadcasted = mx.broadcast_to(bias, shape=(4, 3))
+print(f"廣播後形狀: {broadcasted.shape}")  # 印出：(4, 3)
+
+# 2. 因果注意力遮罩廣播: (1, 1, 16, 16) 廣播至 (Batch=2, Heads=8, 16, 16)
+mask = mx.zeros((1, 1, 16, 16))
+full_mask = mx.broadcast_to(mask, shape=(2, 8, 16, 16))
+print(f"多頭因果遮罩廣播形狀: {full_mask.shape}")  # 印出：(2, 8, 16, 16)
+```
+
+---
+
+##### mx.repeat() 與 mx.tile() 元素級重複與多維平鋪擴展
+
+- **使用時機**：
+  - `repeat`：沿指定軸將每個元素就地重複複製 N 次（如 `[1, 2]` 重複 2 次得到 `[1, 1, 2, 2]`）。在現代大模型 Grouped-Query Attention (GQA，如 Llama 3、Mistral) 中，用於將數量較少的 Key/Value 頭按比例重複複製擴充，以對齊 Query 頭數量。
+  - `tile`：將整個張量視為地磚進行多維連續平鋪（如 `[1, 2]` 平鋪 2 次得到 `[1, 2, 1, 2]`）。
+- **語法**：
+  - `mx.repeat(a, repeats, axis=None)`
+  - `mx.tile(a, reps)`
+- **參數說明**：
+  - `repeats`：各元素重複複製的次數。
+  - `reps`：各軸向平鋪的倍數整數或整數元組。
+- **回傳值**：
+  - `mx.array`：重複複製擴展後的張量。
+
+```python
+import mlx.core as mx
+
+a = mx.array([1, 2, 3])
+
+# 1. repeat: 元素級相鄰重複
+rep = mx.repeat(a, repeats=2, axis=0)
+print(f"repeat 結果: {rep}")  # 印出：array([1, 1, 2, 2, 3, 3], dtype=int32)
+
+# 2. tile: 整塊平鋪複製
+til = mx.tile(a, 2)
+print(f"tile 結果: {til}")    # 印出：array([1, 2, 3, 1, 2, 3], dtype=int32)
+
+# 3. 模擬 GQA 中將 2 個 KV Heads 複製擴增為 8 個以對齊 Query Heads
+# 形狀: (Batch=1, KV_Heads=2, Seq=4, Dim=64) -> 重複 4 次 -> (1, 8, 4, 64)
+kv_heads = mx.random.normal((1, 2, 4, 64))
+expanded_kv = mx.repeat(kv_heads, repeats=4, axis=1)
+print(f"GQA 擴展後 KV Heads 形狀: {expanded_kv.shape}")  # 印出：(1, 8, 4, 64)
+```
+
+---
+
+##### mx.pad() 多維張量邊界填充
+
+- **使用時機**：自回歸文本序列長度補齊 (Batch Padding)、卷積神經網路中客製化特徵圖外圍填補、邊界反射填充以維持空間維度。
+- **語法**：`mx.pad(array, pad_width, mode="constant", constant_values=0)`
+- **參數說明**：
+  - `array`：待填充的輸入張量。
+  - `pad_width`：每個維度前後填充數量的元組序列 `[(前0, 後0), (前1, 後1), ...]`。
+  - `mode`：填充演算法（預設 `"constant"` 常數填充，亦支援 `"edge"` 邊緣延伸）。
+  - `constant_values`：常數填充數值（預設為 0）。
+- **回傳值**：
+  - `mx.array`：完成邊界填充的外擴張量。
+
+```python
+import mlx.core as mx
+
+# 1. 2D 矩陣邊界常數填充 (上下各填 1 行，左右各填 2 行)
+img = mx.ones((2, 2))
+padded = mx.pad(img, pad_width=[(1, 1), (2, 2)], mode="constant", constant_values=0)
+print(f"填充後形狀: {padded.shape}")  # 印出：(4, 6)
+
+# 2. NLP 句子長度批次補齊 (將長度為 3 的序列補齊至 6)
+token_ids = mx.array([101, 2054, 102])
+padded_tokens = mx.pad(token_ids, pad_width=(0, 3), constant_values=0)
+print(f"補齊後 Token ID: {padded_tokens}")  # 印出：array([101, 2054, 102, 0, 0, 0], dtype=int32)
+```
+
+---
+
+##### mx.where() 條件三元選擇算子
+
+- **使用時機**：依布林條件遮罩在兩個張量或純量間挑選元素（等價於三元運算子 `condition ? x : y`）。常用於自訂 ReLU/GELU 截斷、因果注意力遮罩（將 False 未來位置替換為 $-\infty$）、強化學習數值截斷。
+- **語法**：`mx.where(condition, x, y)`
+- **參數說明**：
+  - `condition`：布林型別張量 (`mx.bool_`)。
+  - `x`：條件為 `True` 時選取的數值或張量。
+  - `y`：條件為 `False` 時選取的數值或張量。
+- **回傳值**：
+  - `mx.array`：依條件選取組合後的新張量。
+
+```python
+import mlx.core as mx
+
+# 1. 基礎布林三元選取
+cond = mx.array([True, False, True])
+x = mx.array([1, 2, 3])
+y = mx.array([9, 8, 7])
+out = mx.where(cond, x, y)
+print(f"where 輸出: {out}")  # 印出：array([1, 8, 3], dtype=int32)
+
+# 2. 自訂 ReLU 啟動函數 (小於 0 置為 0.0)
+feats = mx.array([-2.5, 0.0, 3.2, -1.0])
+relu_out = mx.where(feats > 0, feats, 0.0)
+print(f"ReLU 效果: {relu_out}")  # 印出：array([0, 0, 3.2, 0], dtype=float32)
+
+# 3. 因果注意力遮罩防窺未來 Token (將未來位置設為負無窮大)
+seq_len = 4
+i = mx.arange(seq_len)[:, None]
+j = mx.arange(seq_len)[None, :]
+causal_condition = i >= j  # 下三角為 True (過去與現在)，上三角為 False (未來)
+causal_mask = mx.where(causal_condition, 0.0, -1e9)
+print("因果遮罩矩陣:")
+print(causal_mask)
+```
+
+---
+
+##### mx.take() 與 mx.take_along_axis() 多維陣列索引抽取
+
+- **使用時機**：
+  - `take`：沿指定軸或扁平索引直接抽取目標元素，是離散 Token 查表與資料集隨機抽樣的底層核心。
+  - `take_along_axis`：依據與資料維度對應的多維索引張量抽取數值。常用於分類任務中提取最高預測機率的 Logits、強化學習從 Q-Table 中提取選定動作的價值。
+- **語法**：
+  - `mx.take(a, indices, axis=None)`
+  - `mx.take_along_axis(a, indices, axis)`
+- **參數說明**：
+  - `a`：被抽取的來源多維張量。
+  - `indices`：整數索引張量。
+  - `axis`：抽取目標軸向。
+- **回傳值**：
+  - `mx.array`：抽取出的目標張量。
+
+```python
+import mlx.core as mx
+
+# 1. mx.take: 沿指定軸抽取特定離散索引
+embedding_table = mx.array([[10, 11], [20, 21], [30, 31], [40, 41]])
+token_ids = mx.array([0, 2, 3])
+extracted = mx.take(embedding_table, token_ids, axis=0)
+print("抽取特徵向量:")
+print(extracted)  # 印出索引 0, 2, 3 的列
+
+# 2. mx.take_along_axis: 沿分類軸依據 argmax 索引提取 Top-1 預測分數
+logits = mx.array([[0.1, 0.9, 0.3], [0.8, 0.0, 0.2]])
+best_classes = mx.argmax(logits, axis=1, keepdims=True)
+top_scores = mx.take_along_axis(logits, best_classes, axis=1)
+print(f"最佳預測類別: {best_classes.squeeze()}")  # 印出：array([1, 0], dtype=uint32)
+print(f"對應預測機率: {top_scores.squeeze()}")   # 印出：array([0.9, 0.8], dtype=float32)
+```
+
+---
+
+##### array.at[...] 函數式不可變局部更新
+
+- **使用時機**：以 JAX 風格的純函數式運算對張量特定切片或離散索引位置進行局部累加、替換或運算（支援 `.add`、`.subtract`、`.multiply`、`.divide`、`.maximum`、`.minimum`）。在保證張量不可變性（Immutability）與 JIT 編譯圖純函數性的前提下，安全地產生局部更新後的新張量，杜絕記憶體就地污染。
+- **語法**：
+  - `array.at[idx].add(value)`
+  - `array.at[idx].subtract(value)`
+  - `array.at[idx].multiply(value)`
+  - `array.at[idx].divide(value)`
+  - `array.at[idx].maximum(value)`
+  - `array.at[idx].minimum(value)`
+- **參數說明**：
+  - `idx`：切片索引、單一整數或整數索引張量。
+  - `value`：欲進行運算的標量或張量數值。
+- **回傳值**：
+  - `mx.array`：套用運算後生成的**全新張量**（原始張量保持完全不變）。
+
+```python
+import mlx.core as mx
+
+base = mx.zeros((5,))
+
+# 1. 局部純函數式累加 (原始 base 保持全 0，返回全新 added 張量)
+added = base.at[1].add(10.0)
+print(f"局部累加後新張量: {added}")  # 印出：array([0, 10, 0, 0, 0], dtype=float32)
+print(f"原始張量保持不可變: {base}")   # 印出：array([0, 0, 0, 0, 0], dtype=float32)
+
+# 2. 局部切片數值運算
+multi = added.at[1].multiply(2.5)
+print(f"局部乘法後新張量: {multi}")  # 印出：array([0, 25, 0, 0, 0], dtype=float32)
+
+# 3. 散列聚合 (Scatter-Add 累加重複索引)
+scatter_idx = mx.array([2, 2, 4])
+scattered = base.at[scatter_idx].add(1.0)
+print(f"重複索引累加結果: {scattered}")  # 印出：array([0, 0, 2, 0, 1], dtype=float32)
+```
+
+---
+
+##### array.view() 底層二進位記憶體型別重釋
+
+- **使用時機**：在完全不改變記憶體底層二進位 Byte 位元的前提下，將張量以另一種資料型別重新解讀（Bitcast）。常見於底層演算法、硬體驅動優化、快速位元操作（例如將 `float32` 重釋為 `uint32` 進行二進位浮點遮罩編碼）。
+- **語法**：`array.view(dtype)` 或 `mx.view(array, dtype)`
+- **參數說明**：
+  - `dtype`：目標解讀資料型別（例如 `mx.uint32`、`mx.int32`）。
+- **回傳值**：
+  - `mx.array`：以新型別解讀底層位元組後的張量。
+
+```python
+import mlx.core as mx
+
+# 將 32-bit 浮點數 1.0 以 32-bit 無符號整數解讀 (IEEE 754 二進位表示為 0x3F800000 = 1065353216)
+f_val = mx.array([1.0], dtype=mx.float32)
+u_val = f_val.view(mx.uint32)
+print(f"float32 數值: {f_val.item()}")  # 印出：1.0
+print(f"uint32 位元值: {u_val.item()}")  # 印出：1065353216
+```
+
+---
+
+##### mx.flip() 與 mx.roll() 維度翻轉與循環滾動位移
+
+- **使用時機**：
+  - `flip`：沿指定軸反轉元素排列順序。用於時間序列逆向分析（如雙向 RNN 反向特徵提取）、卷積濾波器空間鏡射、電腦視覺資料擴增（水平翻轉）。
+  - `roll`：沿指定軸將元素循環滾動位移。用於 Swin Transformer 中的移動視窗注意力機制 (Shifted Window Multi-Head Attention, SW-MSA)、周期性邊界條件模擬。
+- **語法**：
+  - `mx.flip(a, axis)` 或 `array.flip(axis)`
+  - `mx.roll(a, shift, axis=None)` 或 `array.roll(shift, axis=None)`
+- **參數說明**：
+  - `axis`：翻轉或滾動的目標軸。
+  - `shift`：滾動位移的元素數量（正數表示向右/向下滾動，負數表示向左/向上滾動）。
+- **回傳值**：
+  - `mx.array`：翻轉或循環位移後的張量。
+
+```python
+import mlx.core as mx
+
+seq = mx.arange(5)  # [0, 1, 2, 3, 4]
+
+# 1. flip: 沿第 0 軸倒轉序列
+flipped = mx.flip(seq, axis=0)
+print(f"倒轉後序列: {flipped}")  # 印出：array([4, 3, 2, 1, 0], dtype=int32)
+
+# 2. roll: 向右循環位移 1 格 (末尾 4 繞回首位)
+rolled = mx.roll(seq, shift=1, axis=0)
+print(f"循環位移後序列: {rolled}")  # 印出：array([4, 0, 1, 2, 3], dtype=int32)
+
+# 3. 2D 特徵圖循環滾動 (模擬 Swin Transformer 視窗位移)
+feature_map = mx.arange(16).reshape(4, 4)
+shifted_map = mx.roll(feature_map, shift=(-1, -1), axis=(0, 1))
+print("視窗循環位移:")
+print(shifted_map)
 ```
 
 ---
