@@ -237,7 +237,6 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 | **[[#mlx_lm.generate() 執行大語言模型串流推論生成\|mlx_lm.generate()]]** | **調用模型與取樣策略生成文字並支援串流回傳** | 本機終端對話助手、智慧文本生成、本地 Agent 驅動 |
 | **[[#mlx_lm.convert() 將 Hugging Face 模型權重轉為 MLX 與量化格式\|mlx_lm.convert()]]** | **將原始 PyTorch/Safetensors 模型轉換並壓縮為 MLX 專用 4-bit/8-bit 權重** | 私有模型本地部署、模型顯存壓縮優化 |
 | **[[#initialize_rope() 動態旋轉位置編碼工廠函式\|initialize_rope()]]** | **解析模型組態動態建立標準 RoPE 或 YaRN 等長上下文位置編碼模組** | 現代長上下文 LLM (YaRN 16K/32K/128K、Llama 3、Qwen) 位置編碼初始化 |
-
 ---
 
 # 核心基礎運算與張量操作 (mlx.core)
@@ -2759,14 +2758,16 @@ convert(
 - **使用時機**：建構或載入現代開源大語言模型時，根據模型的架構配置（特別是 Hugging Face `config.json` 中的 `rope_scaling` 欄位）自動實例化適配的位置編碼層。當模型需要擴展超長上下文視窗並採用 YaRN、Llama 3 頻率縮放或長上下文內插演算法時，使用 `initialize_rope()` 能自動解析字典超參數並組裝對應的 RoPE 模組，避免手動計算頻率分段與內插權重。
 - **語法**：`initialize_rope(dims: int, base: float = 10000.0, traditional: bool = False, scaling_config: dict = None, max_position_embeddings: int = None, **kwargs)`
 - **參數說明**：
-  | 參數名稱 | 型別 | 預設值 | 說明 |
-  | :--- | :--- | :--- | :--- |
-  | **`dims`** | `int` | *必填* | 每個注意力頭需要進行旋轉編碼的特徵維度大小 (`head_dim`)。 |
-  | **`base`** | `float` | `10000.0` | RoPE 角頻率基底常數 \(\theta\)（如 Llama 3 常用 `500000.0`，Qwen 常用 `1000000.0`）。 |
-  | **`traditional`** | `bool` | `False` | 旋轉實作模式。`False` 為 MLX 推薦的前後半部向量配對；`True` 為相鄰兩兩元素配對。 |
-  | **`scaling_config`** | `Optional[dict]` | `None` | 位置縮放配置字典（即 Hugging Face 模型組態中的 `rope_scaling`）。若為 `None`，自動回退建立標準 `nn.RoPE`。 |
-  | **`max_position_embeddings`** | `Optional[int]` | `None` | 模型支援的最大上下文長度上限。 |
-  | **`**kwargs`** | `Any` | - | 接收其他非核心模型自訂引數。 |
+
+| 參數名稱 | 資料型別 | 預設值 | 說明 |
+| :--- | :--- | :--- | :--- |
+| **`dims`** | `int` | *(必填)* | 每個注意力頭需要進行旋轉編碼的特徵維度大小 (`head_dim`)。 |
+| **`base`** | `float` | `10000.0` | RoPE 角頻率基底常數 \(\theta\)（如 Llama 3 常用 `500000.0`，Qwen 常用 `1000000.0`）。 |
+| **`traditional`** | `bool` | `False` | 旋轉實作模式。`False` 為 MLX 推薦的前後半部向量配對；`True` 為相鄰兩兩元素配對。 |
+| **`scaling_config`** | `Optional[dict]` | `None` | 位置縮放配置字典（即 Hugging Face 模型組態中的 `rope_scaling`）。若為 `None`，自動回退建立標準 `nn.RoPE`。 |
+| **`max_position_embeddings`** | `Optional[int]` | `None` | 模型支援的最大上下文長度上限。 |
+| **`kwargs`** | `Any` | `-` | 接收其他非核心模型自訂引數。 |
+
 - **回傳值**：
   - `nn.Module` 神經模組實例：當 `scaling_config` 為 `None` 時回傳標準 `mlx.nn.RoPE`；當設定為 `"yarn"` 時回傳 `YarnRoPE` 實例；若指定其他縮放類型則回傳對應的衍生模組（如 `Llama3RoPE`、`LinearScaledRoPE`）。
 
