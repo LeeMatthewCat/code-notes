@@ -2765,11 +2765,28 @@ convert(
 | **`base`** | `float` | `10000.0` | RoPE 角頻率基底常數 \(\theta\)（如 Llama 3 常用 `500000.0`，Qwen 常用 `1000000.0`）。 |
 | **`traditional`** | `bool` | `False` | 旋轉實作模式。`False` 為 MLX 推薦的前後半部向量配對；`True` 為相鄰兩兩元素配對。 |
 | **`scaling_config`** | `Optional[dict]` | `None` | 位置縮放配置字典（即 Hugging Face 模型組態中的 `rope_scaling`）。若為 `None`，自動回退建立標準 `nn.RoPE`。 |
-| **`max_position_embeddings`** | `Optional[int]` | `None` | 模型支援的最大上下文長度上限。 |
+| **`max_position_embeddings`** | `Optional[int]` | `None` | 模型支援的最大上下文長度上限。<br>• **若為 `None` 的情況**：對標準 RoPE / 線性縮放完全無影響；對 YaRN 或 SuScaledRoPE，會自動推導為 `original_max_position_embeddings * factor`（即目標長度）；對 Dynamic NTK 等動態縮放演算法，若未提供則通常回退使用原生基準長度作為動態外推觸發門檻，不施加硬性長度截斷。 |
 | **`kwargs`** | `Any` | `-` | 接收其他非核心模型自訂引數。 |
 
 - **回傳值**：
   - `nn.Module` 神經模組實例：當 `scaling_config` 為 `None` 時回傳標準 `mlx.nn.RoPE`；當設定為 `"yarn"` 時回傳 `YarnRoPE` 實例；若指定其他縮放類型則回傳對應的衍生模組（如 `Llama3RoPE`、`LinearScaledRoPE`）。
+
+### scaling_config 組態字典核心參數全景指南
+
+`scaling_config` 字典完全相容於 Hugging Face 模型的 `rope_scaling` 配置，用來告訴 `initialize_rope()` 該建構哪種長上下文擴展演算法及其超參數。
+
+| 參數鍵名 | 資料型別 | 預設 / 常見值 | 適用縮放演算法 | 詳細功能與原理解釋 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`rope_type` / `type`** | `str` | `"default"` | 全部 | 指定位置縮放演算法類型。支援 `"default"`, `"linear"`, `"dynamic"`, `"yarn"`, `"deepseek_yarn"`, `"telechat3-yarn"`, `"llama3"`, `"longrope"`, `"proportional"`, `"mrope"` 等。 |
+| **`factor`** | `float` | `1.0` | 全部外推演算法 | 長度擴展倍率 \(s\)（目標長度 / 原生預訓練長度）。例如原生 4K 擴展至 16K 時設為 `4.0`；原生 8K 擴展至 32K 時設為 `4.0`。 |
+| **`original_max_position_embeddings`** | `int` | *(強烈建議)* | YaRN, Llama 3, LongRoPE | 模型在預訓練階段的原生基準上下文長度（例如 Llama 2 的 `4096`、Llama 3 的 `8192`）。為計算波長頻率劃分與縮放比例的核心基準點。 |
+| **`beta_fast`** | `float` | `32.0` | YaRN 專用 | 高頻截斷門檻值。旋轉波長小於此倍率的高頻維度完全不進行內插（保持 \(s = 1\)），確保相鄰 Token 的局部相對距離與文法結構不失真。 |
+| **`beta_slow`** | `float` | `1.0` | YaRN 專用 | 低頻截斷門檻值。旋轉波長大於此倍率的低頻維度進行完全線性內插（\(s = factor\)），保證超長距離旋轉相位不超出預訓練極限。介於兩者之間則平滑過渡。 |
+| **`attention_factor` / `mscale`** | `float` | `1.0` | YaRN, LongRoPE | 注意力溫度縮放係數。用於校正序列大幅延長時 Softmax 注意力矩陣分佈熵增（Entropy Distortion）的現象，避免注意力過度發散。 |
+| **`mscale_all_dim`** | `float` | `0.0` | YaRN 專用 | 全維度注意力額外縮放參數，通常與 `attention_factor` 搭配進行更精細的數值校準。 |
+| **`low_freq_factor`** | `float` | `1.0` | Llama 3 專用 | 低頻波段平滑衰減因子（Llama 3 混合頻率演算法），低於此頻率的維度進行完整縮放。 |
+| **`high_freq_factor`** | `float` | `4.0` | Llama 3 專用 | 高頻波段截斷因子，高於此頻率的維度完全不進行縮放（保持原始頻率）。 |
+| **`short_factor` / `long_factor`** | `list[float]` | `-` | LongRoPE / SuScaledRoPE | 長短序列各自對應的逐維度自適應縮放向量列表，針對不同注意力維度進行非均勻精細縮放。 |
 
 ### 核心差異：initialize_rope() 與 nn.RoPE 對照
 
