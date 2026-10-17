@@ -221,6 +221,7 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 | **[[#nn.Dropout 隨機神經元丟棄正則化層\|nn.Dropout]]** | **在訓練期依指定機率隨機將激活值置零並自動按比例放大** | 抑制神經網路過擬合、增強模型特徵泛化能力 |
 | **[[#nn.LayerNorm 標準層歸一化神經層\|nn.LayerNorm]]** | **沿特徵維度計算均值與方差並套用可學習仿射參數歸一化** | 經典 Transformer、BERT 與 ViT 的特徵穩定歸一化 |
 | **[[#nn.RMSNorm 均方根層歸一化層\|nn.RMSNorm]]** | **現代大語言模型必備之無偏置均方根正規化模組** | 構建 Llama 3、Mistral 等架構之 Pre-Norm 層 |
+| **[[#nn.RoPE 旋轉位置編碼神經模組\|nn.RoPE]]** | **大語言模型必備之相對旋轉位置編碼模組** | Llama 3、Qwen、Mistral 等架構 Query 與 Key 位置編碼與 KV Cache 增量推論 |
 | **[[#nn.MultiHeadAttention 多頭自注意力神經層\|nn.MultiHeadAttention]]** | **經典 Transformer 多頭注意力機制神經網路模組** | 序列特徵建模、長文字自注意力表示提取 |
 | **[[#nn.Conv2d 二維卷積神經網路層\|nn.Conv2d]]** | **對影像或網格狀資料執行二維空間特徵卷積提取** | 電腦視覺影像分類、卷積神經網絡 (CNN) 骨幹 |
 | **[[#nn.Sequential 順序式神經網路容器\|nn.Sequential]]** | **將多個神經網路層按宣告順序串聯執行** | 快速搭建前饋神經網路、卷積特徵提取層 |
@@ -2273,6 +2274,59 @@ rms.save_weights("rms_layer.safetensors")
 new_rms = nn.RMSNorm(dims=512)
 new_rms.load_weights("rms_layer.safetensors")
 print(f"載入後權重精度一致: {new_rms.weight.dtype == mx.bfloat16}")  # 印出：True
+```
+
+---
+
+##### nn.RoPE 旋轉位置編碼神經模組
+
+- **使用時機**：構建現代主流大語言模型（如 Llama 3、Mistral、Qwen、DeepSeek 等）的標準位置編碼層。相較於早期直接將絕對位置向量與詞嵌入相加的傳統做法，RoPE (Rotary Position Embedding) 將位置資訊透過複數平面旋轉矩陣直接注入至 Query 與 Key 向量中。在計算注意力點積內積時天然具備**相對距離衰減特性**，並原生支援大模型自回歸生成時的 **KV Cache 增量解碼**（透過傳入 `offset` 偏移量）。
+- **語法**：`nn.RoPE(dims, traditional=False, base=10000, scale=1.0)`
+- **參數說明**：
+  - `dims`：需要進行旋轉編碼的特徵維度大小（通常對應單個注意力頭的維度 `head_dim`，或部分旋轉時的指定維度；若輸入張量的特徵維度大於 `dims`，超出維度的部分會保持原樣不變）。
+  - `traditional`：布林值。
+    - `False`（預設，MLX 與現代開源模型推薦）：將特徵向量前半部分與後半部分配對旋轉（Stride 為半維度），更利於 Apple Silicon GPU 平行向量化執行。
+    - `True`（原始論文經典實作）：將相鄰兩兩元素 $[x_0, x_1], [x_2, x_3]$ 配對旋轉。
+  - `base`：計算角頻率的基數底數 $\theta$（預設為 `10000`；在現代長上下文模型如 Llama 3 中常設定為 `500000`，Qwen 中設定為 `1000000`）。
+  - `scale`：位置縮放因子（預設為 `1.0`，可用於線性位置內插擴展上下文長度）。
+- **物件方法與成員 (Methods & Attributes)**：
+  - **前向計算與增量解碼**：
+    - `__call__(x, offset: int = 0)`：前向旋轉編碼計算。
+      - `x`：待旋轉的 Query 或 Key 多維張量，末尾維度必須大於或等於 `dims`。支援 `(Batch, Heads, Seq, Head_Dim)` 或 `(Batch, Seq, Heads, Head_Dim)`。
+      - `offset`：整數偏移量，**在 KV Cache 自回歸流式生成時至關重要**！在 Prompt Prefill 階段輸入整段序列（`offset=0`）；在後續逐字 Token 生成階段，每次僅輸入當前新產生的單個 Token（長度為 1），此時設定 `offset = current_seq_len`，確保新 Token 能正確套用其在全局上下文中的絕對旋轉角度。
+    - **底層硬體加速**：內部無縫調用 Apple Metal 原生硬體加速算子 `mx.fast.rope(...)`，以硬體融合指令在 Metal 著色核心中極速完成旋轉運算，零中繼暫存與顯存頻寬浪費。
+  - **超參數屬性**：
+    - `dims`、`traditional`、`base`、`scale`：初始化時儲存的超參數屬性。
+  - **參數狀態說明**：
+    - RoPE 屬於無可學習參數的純數學確定性變換模組，`parameters()` 回傳為空字典 `{}`，不會佔用模型權重顯存，亦不參與梯度更新。
+- **回傳值**：
+  - `nn.RoPE` 神經模組實例。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+
+# 1. 初始化 RoPE 模組 (頭維度 64, Llama 3 常用 base=500000)
+rope = nn.RoPE(dims=64, base=500000.0)
+
+# 2. Prefill 階段：對完整的 Prompt 序列編碼 (Batch=1, Heads=8, Seq=16, Head_Dim=64)
+q_prefill = mx.random.normal((1, 8, 16, 64))
+k_prefill = mx.random.normal((1, 8, 16, 64))
+q_prefill_rot = rope(q_prefill, offset=0)
+k_prefill_rot = rope(k_prefill, offset=0)
+print(f"Prefill 輸出形狀: {q_prefill_rot.shape}")  # 印出：(1, 8, 16, 64)
+
+# 3. Decode 增量解碼階段：生成第 17 個 Token，傳入 offset=16
+q_step = mx.random.normal((1, 8, 1, 64))
+q_step_rot = rope(q_step, offset=16)
+print(f"Decode 輸出形狀: {q_step_rot.shape}")     # 印出：(1, 8, 1, 64)
+
+# 4. 部分維度旋轉 (Partial RoPE，例如僅旋轉前 32 維，後 32 維保持不變)
+partial_rope = nn.RoPE(dims=32)
+q_partial = mx.random.normal((1, 8, 4, 64))
+q_partial_rot = partial_rope(q_partial)
+assert mx.all(q_partial_rot[..., 32:] == q_partial[..., 32:])
+print("部分旋轉驗證成功: 超出 dims 部分保持原樣不變！")
 ```
 
 ---
