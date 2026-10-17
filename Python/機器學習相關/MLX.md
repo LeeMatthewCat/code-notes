@@ -236,6 +236,7 @@ print(f"殘差模組輸出形狀: {out.shape}")  # 印出：(2, 4, 64)
 | **[[#mlx_lm.load() 載入開源大語言模型與分詞器\|mlx_lm.load()]]** | **載入 Hugging Face 格式之開源 LLM 與專用 Tokenizer** | 本地大語言模型載入、量化權重初始化 |
 | **[[#mlx_lm.generate() 執行大語言模型串流推論生成\|mlx_lm.generate()]]** | **調用模型與取樣策略生成文字並支援串流回傳** | 本機終端對話助手、智慧文本生成、本地 Agent 驅動 |
 | **[[#mlx_lm.convert() 將 Hugging Face 模型權重轉為 MLX 與量化格式\|mlx_lm.convert()]]** | **將原始 PyTorch/Safetensors 模型轉換並壓縮為 MLX 專用 4-bit/8-bit 權重** | 私有模型本地部署、模型顯存壓縮優化 |
+| **[[#initialize_rope() 動態旋轉位置編碼工廠函式\|initialize_rope()]]** | **解析模型組態動態建立標準 RoPE 或 YaRN 等長上下文位置編碼模組** | 現代長上下文 LLM (YaRN 16K/32K/128K、Llama 3、Qwen) 位置編碼初始化 |
 
 ---
 
@@ -2750,6 +2751,115 @@ convert(
     q_bits=4
 )
 ```
+
+---
+
+##### initialize_rope() 動態旋轉位置編碼工廠函式
+
+- **使用時機**：建構或載入現代開源大語言模型時，根據模型的架構配置（特別是 Hugging Face `config.json` 中的 `rope_scaling` 欄位）自動實例化適配的位置編碼層。當模型需要擴展超長上下文視窗並採用 YaRN、Llama 3 頻率縮放或長上下文內插演算法時，使用 `initialize_rope()` 能自動解析字典超參數並組裝對應的 RoPE 模組，避免手動計算頻率分段與內插權重。
+- **語法**：`initialize_rope(dims: int, base: float = 10000.0, traditional: bool = False, scaling_config: dict = None, max_position_embeddings: int = None, **kwargs)`
+- **參數說明**：
+  | 參數名稱 | 型別 | 預設值 | 說明 |
+  | :--- | :--- | :--- | :--- |
+  | **`dims`** | `int` | *必填* | 每個注意力頭需要進行旋轉編碼的特徵維度大小 (`head_dim`)。 |
+  | **`base`** | `float` | `10000.0` | RoPE 角頻率基底常數 \(\theta\)（如 Llama 3 常用 `500000.0`，Qwen 常用 `1000000.0`）。 |
+  | **`traditional`** | `bool` | `False` | 旋轉實作模式。`False` 為 MLX 推薦的前後半部向量配對；`True` 為相鄰兩兩元素配對。 |
+  | **`scaling_config`** | `Optional[dict]` | `None` | 位置縮放配置字典（即 Hugging Face 模型組態中的 `rope_scaling`）。若為 `None`，自動回退建立標準 `nn.RoPE`。 |
+  | **`max_position_embeddings`** | `Optional[int]` | `None` | 模型支援的最大上下文長度上限。 |
+  | **`**kwargs`** | `Any` | - | 接收其他非核心模型自訂引數。 |
+- **回傳值**：
+  - `nn.Module` 神經模組實例：當 `scaling_config` 為 `None` 時回傳標準 `mlx.nn.RoPE`；當設定為 `"yarn"` 時回傳 `YarnRoPE` 實例；若指定其他縮放類型則回傳對應的衍生模組（如 `Llama3RoPE`、`LinearScaledRoPE`）。
+
+### 核心差異：initialize_rope() 與 nn.RoPE 對照
+
+| 比較維度 | `mlx.nn.RoPE` | `mlx_lm.models.rope_utils.initialize_rope()` |
+| :--- | :--- | :--- |
+| **所屬層次** | `mlx.nn`（MLX 核心基礎神經網路庫） | `mlx_lm.models.rope_utils`（`mlx-lm` 高階 LLM 生態庫） |
+| **物件本質** | 具體的神經模組類別 (`class RoPE(nn.Module)`) | 動態工廠函式 (Factory Function) |
+| **配置方式** | 僅接收純量數值參數 (`dims`, `base`, `scale`) | 接收完整 `scaling_config` 字典，依組態自動派發 |
+| **演算法支援** | 僅支援標準幾何旋轉與純線性縮放 (`scale` 乘數) | 原生支援 **YaRN**、**Llama 3 混合頻率縮放**、**Dynamic NTK** 等進階技術 |
+| **回傳結果** | 固定回傳 `nn.RoPE` 模組實例 | 依組態動態回傳 `nn.RoPE`、`YarnRoPE` 或 `Llama3RoPE` 實例 |
+| **典型應用** | 自訂小型模型、固定長度傳統注意力網路 | 載入社群長文本開源大模型 (32K / 128K)、長上下文推論與微調 |
+
+### 深入原理：什麼是 YaRN (Yet another RoPE extensioN)
+
+當大語言模型需要將上下文視窗由預訓練長度（如 4,096）外推擴展至更長範圍（如 16,384 或 32,768）時，傳統做法存在明顯缺陷：
+
+1. **直接線性內插 (Linear Interpolation)**：將位置索引均勻壓縮 \(s\) 倍。雖然低頻維度能感知超長距離，但所有高頻維度（波長極短）的旋轉相位也被迫壓縮，導致相鄰 Token 之間的精確相對距離被模糊化，局部文法與注意力敏銳度崩塌。
+2. **直接外推 (Extrapolation)**：不做任何縮放。高頻特徵保持精確，但低頻特徵在超過訓練長度時會旋轉到從未見過的高角度區域，造成注意力分數完全失真。
+3. **YaRN 解決方案**：依據特徵維度的頻率波長實施三段式自適應縮放：
+   - **高頻維度（短波長）**：不進行內插（縮放比 \(s = 1\)），保留原始相鄰相對位置敏銳度。
+   - **低頻維度（長波長）**：進行完全線性內插（縮放比 \(s = factor\)），確保旋轉角度不超出預訓練範圍。
+   - **中頻過渡維度**：由 `beta_fast` 與 `beta_slow` 門檻值構建平滑過渡斜坡函數，避免頻率邊界突變。
+   - **注意力溫度修正 (Attention Temperature Scaling)**：YaRN 額外計算一個溫度縮放係數，抵消上下文擴展時 Softmax 分佈熵增高的失真現象，大幅穩定長序列推論表現。
+
+### 利用 initialize_rope() 實作 YaRN 長上下文擴展
+
+在 `scaling_config` 中指定 `rope_type` 為 `"yarn"`（或相容於 Hugging Face 的配置）：
+
+- `rope_type` 或 `type`：字串，設為 `"yarn"`。
+- `factor`：擴展倍率浮點數（目標長度 / 原生預訓練長度，例如 \(16384 / 4096 = 4.0\)）。
+- `original_max_position_embeddings`：原生預訓練長度整數（例如 `4096`）。
+- `beta_fast`：高頻截至門檻（預設為 `32.0`）。
+- `beta_slow`：低頻截至門檻（預設為 `1.0`）。
+
+```python
+import mlx.core as mx
+import mlx.nn as nn
+from mlx_lm.models.rope_utils import initialize_rope
+
+# 1. 定義單個注意力頭特徵維度與頻率基數
+head_dim = 64
+rope_base = 10000.0
+
+# 2. 定義 YaRN 長上下文擴展組態字典 (將 4K 原生長度擴充 4 倍至 16K)
+yarn_scaling_config = {
+    "rope_type": "yarn",
+    "factor": 4.0,
+    "original_max_position_embeddings": 4096,
+    "beta_fast": 32.0,
+    "beta_slow": 1.0,
+}
+
+# 3. 透過工廠函式建立 RoPE 模組 (自動解析 yarn 配置並實例化 YarnRoPE)
+rope_layer = initialize_rope(
+    dims=head_dim,
+    base=rope_base,
+    traditional=False,
+    scaling_config=yarn_scaling_config,
+    max_position_embeddings=16384,
+)
+
+# 輸出生成的模組類別名稱
+print("模組型別:", type(rope_layer).__name__)  # 假設印出：YarnRoPE
+
+# 4. Prompt Prefill 階段：對長輸入序列進行位置旋轉 (8192 長度)
+batch_size, num_heads, seq_len = 1, 8, 8192
+q_prefill = mx.random.normal((batch_size, num_heads, seq_len, head_dim))
+k_prefill = mx.random.normal((batch_size, num_heads, seq_len, head_dim))
+
+q_prefill_rot = rope_layer(q_prefill, offset=0)
+k_prefill_rot = rope_layer(k_prefill, offset=0)
+mx.eval(q_prefill_rot, k_prefill_rot)
+print("Prefill 旋轉後維度:", q_prefill_rot.shape)  # 假設印出：(1, 8, 8192, 64)
+
+# 5. 自回歸 Decode 增量解碼階段 (KV Cache)：為第 8193 個 Token 編碼 (傳入 offset=8192)
+q_step = mx.random.normal((batch_size, num_heads, 1, head_dim))
+q_step_rot = rope_layer(q_step, offset=8192)
+mx.eval(q_step_rot)
+print("Decode 增量 Token 維度:", q_step_rot.shape)  # 假設印出：(1, 8, 1, 64)
+
+# 6. 回退機制驗證：未給予 scaling_config 時自動降級為標準 mlx.nn.RoPE
+standard_rope = initialize_rope(
+    dims=head_dim,
+    base=rope_base,
+    scaling_config=None,
+)
+print("回退模組型別:", type(standard_rope).__name__)  # 假設印出：RoPE
+print("回退驗證為 nn.RoPE 實例:", isinstance(standard_rope, nn.RoPE))  # 假設印出：True
+```
+
+> **[小提醒]**：`initialize_rope()` 是專屬於 `mlx-lm` 生態的工程輔助工廠函式，主要負責載入第三方預訓練長文本模型（如 Qwen2 32K 或 Llama 3 128K）。若是在純 MLX 專案中自行從零構建固定短長度的神經網絡，直接使用標準 `mlx.nn.RoPE` 能維持最少依賴與最純粹的執行邏輯。
 
 ---
 
